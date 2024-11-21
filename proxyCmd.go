@@ -48,11 +48,11 @@ func NewProxyCmd(use string) *cobra.Command {
 			}
 
 			if !proxyNoRequest {
-				proxy.AddRequestOutReadHook(efincore.HookRequestReadFunc(printer.PrintRequest))
+				proxy.AddRequestOutHook(efincore.HookRequestReadFunc(printer.PrintRequest))
 			}
 
 			if !proxyNoResponses {
-				proxy.AddResponseInReadHook(efincore.HookResponseReadFunc(printer.PrintResponse))
+				proxy.AddResponseInHook(efincore.HookResponseReadFunc(printer.PrintResponse))
 			}
 
 			proxy.AddRequestModHook(RemoveHeaderRequest("accept-encoding"))
@@ -76,21 +76,21 @@ func NewProxyCmd(use string) *cobra.Command {
 
 				saver := NewRawRequestSaver(proxySaveDirectory)
 
-				proxy.AddRequestOutReadHook(efincore.HookRequestReadFunc(saver.SaveRequest))
-				proxy.AddResponseInReadHook(efincore.HookResponseReadFunc(saver.SaveResponse))
+				proxy.AddRequestOutHook(efincore.HookRequestReadFunc(saver.SaveRequest))
+				proxy.AddResponseInHook(efincore.HookResponseReadFunc(saver.SaveResponse))
 			}
 
 			if proxyGrpcAddr != "" {
 				grpcServer := efincore.NewGRPCServer(proxyGrpcAddr)
 				go grpcServer.Run()
 
-				proxy.AddRequestInReadHook(efincore.HookRequestReadFunc(grpcServer.RequestInReadHook))
+				proxy.AddRequestInHook(efincore.HookRequestReadFunc(grpcServer.RequestInHook))
 				proxy.AddRequestModHook(efincore.HookRequestModFunc(grpcServer.RequestModHook))
-				proxy.AddRequestOutReadHook(efincore.HookRequestReadFunc(grpcServer.RequestOutReadHook))
+				proxy.AddRequestOutHook(efincore.HookRequestReadFunc(grpcServer.RequestOutHook))
 
-				proxy.AddResponseInReadHook(efincore.HookResponseReadFunc(grpcServer.ResponseInReadHook))
+				proxy.AddResponseInHook(efincore.HookResponseReadFunc(grpcServer.ResponseInHook))
 				proxy.AddResponseModHook(efincore.HookResponseModFunc(grpcServer.ResponseModHook))
-				proxy.AddResponseOutReadHook(efincore.HookResponseReadFunc(grpcServer.ResponseOutReadHook))
+				proxy.AddResponseOutHook(efincore.HookResponseReadFunc(grpcServer.ResponseOutHook))
 			}
 
 			if proxyDBFile != "" {
@@ -99,8 +99,8 @@ func NewProxyCmd(use string) *cobra.Command {
 					panic(err)
 				}
 
-				proxy.AddRequestOutReadHook(efincore.HookRequestReadFunc(db.SaveRequest))
-				proxy.AddResponseInReadHook(efincore.HookResponseReadFunc(db.SaveResponse))
+				proxy.AddRequestOutHook(efincore.HookRequestReadFunc(db.SaveRequest))
+				proxy.AddResponseInHook(efincore.HookResponseReadFunc(db.SaveResponse))
 
 				/*
 					if proxySaveWebSockets {

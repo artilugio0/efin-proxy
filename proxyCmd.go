@@ -68,10 +68,10 @@ func NewProxyCmd(use string) *cobra.Command {
 					if err := os.Mkdir(proxySaveDirectory, 0755); err != nil {
 						panic(err)
 					}
-				}
-
-				if !stat.IsDir() {
-					panic(fmt.Sprintf("the specified path '%s' is not a directory", proxySaveDirectory))
+				} else {
+					if !stat.IsDir() {
+						panic(fmt.Sprintf("the specified path '%s' is not a directory", proxySaveDirectory))
+					}
 				}
 
 				saver := NewRawRequestSaver(proxySaveDirectory)

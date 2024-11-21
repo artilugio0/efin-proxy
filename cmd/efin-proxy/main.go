@@ -130,10 +130,10 @@ func NewProxyCmd(use string) *cobra.Command {
 					proxyIncludeTypes,
 					proxyExcludeTypes,
 				)
-				proxy.AddRequestFilter(filterFileType)
 				if err != nil {
 					panic(err)
 				}
+				proxy.AddRequestFilter(filterFileType)
 			}
 
 			if err := proxy.ListenAndServe(); err != nil {

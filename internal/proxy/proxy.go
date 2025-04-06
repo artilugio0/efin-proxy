@@ -54,6 +54,7 @@ func defaultModifyRequest(req *http.Request) *http.Request {
 // ServeHTTP handles incoming HTTP requests
 func (p *Proxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	modifiedReq := p.ModifyRequest(cloneRequest(req))
+	modifiedReq.RequestURI = "" // Clear RequestURI for client-side request
 
 	log.Printf("Original request: %s %s", req.Method, req.URL)
 	log.Printf("Modified request: %s %s", modifiedReq.Method, modifiedReq.URL)
@@ -93,6 +94,8 @@ func cloneRequest(req *http.Request) *http.Request {
 		req.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
 		r.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
 		r.ContentLength = req.ContentLength
+	} else {
+		r.Body = nil // Explicitly set to nil if no body
 	}
 
 	return r

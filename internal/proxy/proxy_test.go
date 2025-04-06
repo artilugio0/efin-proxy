@@ -23,9 +23,6 @@ func TestNewProxy(t *testing.T) {
 
 	p := NewProxy(rootCA, rootKey)
 
-	if p.ModifyRequest == nil {
-		t.Error("ModifyRequest should be initialized to defaultModifyRequest")
-	}
 	if p.Client == nil {
 		t.Error("Client should be initialized")
 	}
@@ -43,19 +40,6 @@ func TestNewProxy(t *testing.T) {
 	}
 }
 
-// TestDefaultModifyRequest tests the defaultModifyRequest function
-func TestDefaultModifyRequest(t *testing.T) {
-	req := httptest.NewRequest("GET", "http://example.com", nil)
-	modifiedReq := defaultModifyRequest(req)
-
-	if modifiedReq != req {
-		t.Errorf("defaultModifyRequest should return the same request, got different pointers: %p vs %p", req, modifiedReq)
-	}
-	if modifiedReq.Header.Get("X-Test") != "" {
-		t.Errorf("defaultModifyRequest should not modify headers, got %s", modifiedReq.Header.Get("X-Test"))
-	}
-}
-
 // TestServeHTTP tests the ServeHTTP method
 func TestServeHTTP(t *testing.T) {
 	_, rootKey, _, _, err := certs.GenerateRootCA() // Discard rootCA with _
@@ -64,10 +48,10 @@ func TestServeHTTP(t *testing.T) {
 	}
 
 	p := NewProxy(nil, rootKey) // Pass nil for rootCA since it’s not used
-	p.ModifyRequest = func(req *http.Request) *http.Request {
+	p.RequestModPipeline = append(p.RequestModPipeline, func(req *http.Request) (*http.Request, error) {
 		req.Header.Set("X-Modified", "true")
-		return req
-	}
+		return req, nil
+	})
 
 	// Mock HTTP server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

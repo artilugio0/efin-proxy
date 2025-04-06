@@ -39,13 +39,16 @@ func main() {
 	}
 
 	p := proxy.NewProxy(rootCA, rootKey)
-	p.ModifyRequest = proxy.ModifyRequest
+	p.RequestModPipeline = append(p.RequestModPipeline, func(req *http.Request) (*http.Request, error) {
+		req.Header.Set("X-Modified", "true")
+		return req, nil
+	})
 
 	server := &http.Server{
 		Addr: ":8080",
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.Method == http.MethodConnect {
-				proxy.HandleConnect(p, w, r)
+				p.HandleConnect(w, r) // Call as method on p
 			} else {
 				p.ServeHTTP(w, r)
 			}

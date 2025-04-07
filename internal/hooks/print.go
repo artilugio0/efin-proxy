@@ -6,11 +6,11 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/artilugio0/proxy-vibes/internal/proxy" // Import proxy for GetRequestID and GetResponseID
+	"github.com/artilugio0/proxy-vibes/internal/proxy"
 )
 
-// rawRequestString generates the raw HTTP string for a request
-func rawRequestString(req *http.Request) (string, error) {
+// RawRequestBytes generates the raw HTTP bytes for a request
+func RawRequestBytes(req *http.Request) ([]byte, error) {
 	var buf bytes.Buffer
 
 	buf.WriteString(fmt.Sprintf("%s %s %s\r\n", req.Method, req.URL.RequestURI(), req.Proto))
@@ -34,17 +34,17 @@ func rawRequestString(req *http.Request) (string, error) {
 	if req.Body != nil {
 		bodyBytes, err := io.ReadAll(req.Body)
 		if err != nil {
-			return "", fmt.Errorf("failed to read request body: %v", err)
+			return nil, fmt.Errorf("failed to read request body: %v", err)
 		}
 		req.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
 		buf.Write(bodyBytes)
 	}
 
-	return buf.String(), nil
+	return buf.Bytes(), nil
 }
 
-// rawResponseString generates the raw HTTP string for a response
-func rawResponseString(resp *http.Response) (string, error) {
+// RawResponseBytes generates the raw HTTP bytes for a response
+func RawResponseBytes(resp *http.Response) ([]byte, error) {
 	var buf bytes.Buffer
 
 	buf.WriteString(fmt.Sprintf("%s %d %s\r\n", resp.Proto, resp.StatusCode, http.StatusText(resp.StatusCode)))
@@ -60,39 +60,43 @@ func rawResponseString(resp *http.Response) (string, error) {
 	if resp.Body != nil {
 		bodyBytes, err := io.ReadAll(resp.Body)
 		if err != nil {
-			return "", fmt.Errorf("failed to read response body: %v", err)
+			return nil, fmt.Errorf("failed to read response body: %v", err)
 		}
 		resp.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
 		buf.Write(bodyBytes)
 	}
 
-	return buf.String(), nil
+	return buf.Bytes(), nil
 }
 
 // LogRawRequest prints the request in raw HTTP format to stdout with request ID
 func LogRawRequest(req *http.Request) error {
-	raw, err := rawRequestString(req)
+	raw, err := RawRequestBytes(req)
 	if err != nil {
 		return err
 	}
-	if id := proxy.GetRequestID(req); id != "" {
-		fmt.Printf("Request ID: %s\n%s", id, raw)
-	} else {
-		fmt.Println(raw)
+	id := proxy.GetRequestID(req)
+	if id == "" {
+		id = "unknown"
 	}
+	header := fmt.Sprintf("---------- PROXY-VIBES REQUEST START: %s ----------\r\n", id)
+	footer := fmt.Sprintf("---------- PROXY-VIBES REQUEST END: %s ----------\r\n", id)
+	fmt.Printf("%s%s%s", header, raw, footer)
 	return nil
 }
 
 // LogRawResponse prints the response in raw HTTP format to stdout with request ID
 func LogRawResponse(resp *http.Response) error {
-	raw, err := rawResponseString(resp)
+	raw, err := RawResponseBytes(resp)
 	if err != nil {
 		return err
 	}
-	if id := proxy.GetResponseID(resp); id != "" {
-		fmt.Printf("Response ID: %s\n%s", id, raw)
-	} else {
-		fmt.Println(raw)
+	id := proxy.GetResponseID(resp)
+	if id == "" {
+		id = "unknown"
 	}
+	header := fmt.Sprintf("---------- PROXY-VIBES RESPONSE START: %s ----------\r\n", id)
+	footer := fmt.Sprintf("---------- PROXY-VIBES RESPONSE END: %s ----------\r\n", id)
+	fmt.Printf("%s%s%s", header, raw, footer)
 	return nil
 }

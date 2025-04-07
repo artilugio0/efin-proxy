@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"path"
+	"strings"
 
 	"github.com/artilugio0/proxy-vibes/internal/certs"
 	"github.com/artilugio0/proxy-vibes/internal/hooks"
@@ -48,20 +50,21 @@ func main() {
 	}
 
 	p := proxy.NewProxy(rootCA, rootKey)
-	p.RequestInPipeline = append(p.RequestInPipeline, hooks.LogRawRequest)
-	p.RequestModPipeline = append(p.RequestModPipeline, func(req *http.Request) (*http.Request, error) {
-		req.Header.Set("X-Modified", "true")
-		return req, nil
+
+	p.RequestOutPipeline = append(p.RequestOutPipeline, hooks.LogRawRequest)
+	p.RequestModPipeline = append(p.RequestModPipeline, func(r *http.Request) (*http.Request, error) {
+		r.Header.Del("Accept-Encoding")
+		return r, nil
 	})
 	p.ResponseInPipeline = append(p.ResponseInPipeline, hooks.LogRawResponse)
-
 	// Only add save hooks if the d flag is specified and not empty
 	if *saveDir != "" {
 		saveRequest, saveResponse := hooks.NewFileSaveHooks(*saveDir)
-		p.RequestInPipeline = append(p.RequestInPipeline, saveRequest)
+		p.RequestOutPipeline = append(p.RequestOutPipeline, saveRequest)
 		p.ResponseInPipeline = append(p.ResponseInPipeline, saveResponse)
 		log.Printf("Saving requests and responses to directory: %s", *saveDir)
 	}
+	p.InScopeFunc = IsInScope
 
 	server := &http.Server{
 		Addr: ":8080",
@@ -76,4 +79,122 @@ func main() {
 
 	log.Printf("Starting HTTP proxy server on :8080")
 	log.Fatal(server.ListenAndServe())
+}
+
+func IsInScope(r *http.Request) bool {
+	return !IsMultimediaRequest(r) && !IsBinaryDataRequest(r)
+}
+
+// IsMultimediaRequest checks if the request is for a multimedia resource
+// (image, video, or audio) based on the URL's file extension
+func IsMultimediaRequest(r *http.Request) bool {
+	// Get the path from the request URL
+	urlPath := r.URL.Path
+
+	// Extract the file extension (converted to lowercase for consistency)
+	ext := strings.ToLower(path.Ext(urlPath))
+
+	// If there's no extension, it's not a multimedia file
+	if ext == "" {
+		return false
+	}
+
+	// Lists of common multimedia file extensions
+	imageExtensions := map[string]bool{
+		".jpg":  true,
+		".jpeg": true,
+		".png":  true,
+		".gif":  true,
+		".bmp":  true,
+		".webp": true,
+		".svg":  true,
+	}
+
+	videoExtensions := map[string]bool{
+		".mp4":  true,
+		".m4v":  true,
+		".mov":  true,
+		".avi":  true,
+		".wmv":  true,
+		".flv":  true,
+		".webm": true,
+		".mkv":  true,
+	}
+
+	audioExtensions := map[string]bool{
+		".mp3":  true,
+		".m4a":  true,
+		".wav":  true,
+		".ogg":  true,
+		".flac": true,
+		".aac":  true,
+	}
+
+	// Check if the extension matches any multimedia type
+	return imageExtensions[ext] || videoExtensions[ext] || audioExtensions[ext]
+}
+
+// IsBinaryDataRequest checks if the request is for a binary data resource
+// (excluding multimedia types like images, videos, and audio)
+func IsBinaryDataRequest(r *http.Request) bool {
+	// Get the path from the request URL
+	urlPath := r.URL.Path
+
+	// Extract the file extension (converted to lowercase for consistency)
+	ext := strings.ToLower(path.Ext(urlPath))
+
+	// If there's no extension, assume it's not a binary file
+	if ext == "" {
+		return false
+	}
+
+	// Define multimedia extensions to exclude them
+	multimediaExtensions := map[string]bool{
+		// Image extensions
+		".jpg":  true,
+		".jpeg": true,
+		".png":  true,
+		".gif":  true,
+		".bmp":  true,
+		".webp": true,
+		".svg":  true,
+		// Video extensions
+		".mp4":  true,
+		".m4v":  true,
+		".mov":  true,
+		".avi":  true,
+		".wmv":  true,
+		".flv":  true,
+		".webm": true,
+		".mkv":  true,
+		// Audio extensions
+		".mp3":  true,
+		".m4a":  true,
+		".wav":  true,
+		".ogg":  true,
+		".flac": true,
+		".aac":  true,
+	}
+
+	// Define common binary data extensions (non-multimedia)
+	binaryExtensions := map[string]bool{
+		".pdf":  true, // PDF documents
+		".doc":  true, // Word documents (older binary format)
+		".docx": true, // Word documents (XML-based but often treated as binary)
+		".xls":  true, // Excel spreadsheets (older binary format)
+		".xlsx": true, // Excel spreadsheets
+		".zip":  true, // Zip archives
+		".rar":  true, // RAR archives
+		".tar":  true, // Tar archives
+		".gz":   true, // Gzip files
+		".exe":  true, // Windows executables
+		".dll":  true, // Dynamic link libraries
+		".bin":  true, // Generic binary files
+		".iso":  true, // Disk images
+		".dat":  true, // Generic data files
+		".db":   true, // Database files
+	}
+
+	// Check if it's a binary extension but not a multimedia one
+	return binaryExtensions[ext] && !multimediaExtensions[ext]
 }

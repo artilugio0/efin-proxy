@@ -98,7 +98,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		log.Printf("Original request: %s %s", req.Method, req.URL)
 		log.Printf("Final request: %s %s", finalReq.Method, finalReq.URL)
 	} else {
-		finalReq = cloneRequest(req)
+		finalReq = req
 		log.Printf("Request out of scope: %s %s", req.Method, req.URL)
 	}
 
@@ -226,10 +226,8 @@ func (p *Proxy) HandleConnect(w http.ResponseWriter, req *http.Request) {
 					log.Printf("Request pipeline error: %v", err)
 					return
 				}
-				log.Printf("Original CONNECT request: %s %s", httpReq.Method, httpReq.URL)
-				log.Printf("Modified CONNECT request: %s %s", finalReq.Method, finalReq.URL)
 			} else {
-				finalReq = cloneRequest(httpReq)
+				finalReq = httpReq
 				log.Printf("Request out of scope: %s %s", httpReq.Method, httpReq.URL)
 			}
 
@@ -270,6 +268,7 @@ func (p *Proxy) HandleConnect(w http.ResponseWriter, req *http.Request) {
 // processRequestPipelines processes the request through all three request pipelines
 func (p *Proxy) processRequestPipelines(req *http.Request) (*http.Request, error) {
 	currentReq := cloneRequest(req)
+	//currentReq.Header.Del("accept-encoding")
 
 	if len(p.RequestInPipeline) > 0 {
 		var wg sync.WaitGroup
@@ -302,6 +301,7 @@ func (p *Proxy) processRequestPipelines(req *http.Request) (*http.Request, error
 			return nil, fmt.Errorf("RequestModPipeline error: %v", err)
 		}
 		currentReq = modifiedReq
+		currentReq.Body.(*BodyWrapper).Reset()
 	}
 
 	if len(p.RequestOutPipeline) > 0 {
@@ -367,6 +367,7 @@ func (p *Proxy) processResponsePipelines(resp *http.Response) (*http.Response, e
 			return nil, fmt.Errorf("ResponseModPipeline error: %v", err)
 		}
 		currentResp = modifiedResp
+		currentResp.Body.(*BodyWrapper).Reset()
 	}
 
 	if len(p.ResponseOutPipeline) > 0 {
@@ -408,13 +409,18 @@ func cloneRequest(req *http.Request) *http.Request {
 	}
 
 	if req.Body != nil {
-		bodyBytes, err := io.ReadAll(req.Body)
-		if err != nil {
-			log.Printf("Error reading request body: %v", err)
+		if wrapper, ok := req.Body.(*BodyWrapper); ok {
+			r.Body = wrapper.ShallowClone()
+		} else {
+			bodyBytes, err := io.ReadAll(req.Body)
+			if err != nil {
+				log.Printf("Error reading request body: %v", err)
+			}
+			newBody := NewBodyWrapper(bodyBytes)
+			req.Body = newBody
+			r.Body = newBody.ShallowClone()
+			r.ContentLength = req.ContentLength
 		}
-		req.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
-		r.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
-		r.ContentLength = req.ContentLength
 	} else {
 		r.Body = nil
 	}
@@ -433,12 +439,17 @@ func cloneResponse(resp *http.Response) *http.Response {
 	}
 
 	if resp.Body != nil {
-		bodyBytes, err := io.ReadAll(resp.Body)
-		if err != nil {
-			log.Printf("Error reading response body: %v", err)
+		if wrapper, ok := resp.Body.(*BodyWrapper); ok {
+			r.Body = wrapper.ShallowClone()
+		} else {
+			bodyBytes, err := io.ReadAll(resp.Body)
+			if err != nil {
+				log.Printf("Error reading response body: %v", err)
+			}
+			newBody := NewBodyWrapper(bodyBytes)
+			resp.Body = newBody
+			r.Body = newBody.ShallowClone()
 		}
-		resp.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
-		r.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
 	} else {
 		r.Body = nil
 	}
@@ -489,4 +500,44 @@ func getRootCAPool(rootCA *x509.Certificate) *x509.CertPool {
 	pool := x509.NewCertPool()
 	pool.AddCert(rootCA)
 	return pool
+}
+
+// BodyWrapper is a type that wraps a byte array and implements io.ReadCloser
+type BodyWrapper struct {
+	data   []byte        // The underlying byte array
+	reader *bytes.Reader // The reader for the byte array
+}
+
+// NewBodyWrapper creates a new BodyWrapper from a byte slice
+func NewBodyWrapper(data []byte) *BodyWrapper {
+	return &BodyWrapper{
+		data:   data,
+		reader: bytes.NewReader(data),
+	}
+}
+
+// Read implements the io.Reader interface
+func (bw *BodyWrapper) Read(p []byte) (n int, err error) {
+	return bw.reader.Read(p)
+}
+
+// Close implements the io.Closer interface (no-op in this case)
+func (bw *BodyWrapper) Close() error {
+	// Since we're using bytes.Reader, there's nothing to close,
+	// but we implement this for io.ReadCloser compatibility
+	return nil
+}
+
+// ShallowClone creates a new BodyWrapper instance with the same underlying
+// byte array and a fresh reader reset to the start
+func (bw *BodyWrapper) ShallowClone() *BodyWrapper {
+	return &BodyWrapper{
+		data:   bw.data,                  // Reference the same byte array (shallow copy)
+		reader: bytes.NewReader(bw.data), // New reader starting at position 0
+	}
+}
+
+// Reset resets the reader's position to the beginning of the byte array
+func (bw *BodyWrapper) Reset() {
+	bw.reader.Seek(0, io.SeekStart)
 }

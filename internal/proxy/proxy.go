@@ -3,6 +3,7 @@ package proxy
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/artilugio0/proxy-vibes/internal/certs"
 	"github.com/artilugio0/proxy-vibes/internal/websockets"
+	"github.com/google/uuid"
 )
 
 // RequestInOutFunc defines the signature for read-only request pipeline functions
@@ -31,6 +33,10 @@ type ResponseModFunc func(*http.Response) (*http.Response, error)
 
 // InScopeFunc defines the signature for determining if a request is in scope
 type InScopeFunc func(*http.Request) bool
+
+type requestIDKeyType struct{}
+
+var requestIDKey = requestIDKeyType{}
 
 // Proxy struct holds the proxy configuration with pipelines and scope function
 type Proxy struct {
@@ -75,6 +81,11 @@ func NewProxy(rootCA *x509.Certificate, rootKey *rsa.PrivateKey) *Proxy {
 
 // ServeHTTP handles incoming HTTP requests and responses with scope checking
 func (p *Proxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	// Generate UUID v4 and add to request context
+	id := uuid.New().String() // UUID v4
+	ctx := context.WithValue(req.Context(), requestIDKey, id)
+	req = req.WithContext(ctx)
+
 	var finalReq *http.Request
 	var err error
 
@@ -87,7 +98,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		log.Printf("Original request: %s %s", req.Method, req.URL)
 		log.Printf("Final request: %s %s", finalReq.Method, finalReq.URL)
 	} else {
-		finalReq = cloneRequest(req) // Still clone to avoid modifying original
+		finalReq = cloneRequest(req)
 		log.Printf("Request out of scope: %s %s", req.Method, req.URL)
 	}
 
@@ -108,7 +119,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 			return
 		}
 	} else {
-		finalResp = cloneResponse(resp) // Clone to ensure isolation
+		finalResp = cloneResponse(resp)
 	}
 
 	for key, values := range finalResp.Header {
@@ -123,6 +134,11 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 // HandleConnect handles HTTPS CONNECT requests with MITM and pipeline processing
 func (p *Proxy) HandleConnect(w http.ResponseWriter, req *http.Request) {
+	// Generate UUID v4 for the initial CONNECT request (optional, for tracking the tunnel itself)
+	id := uuid.New().String()
+	ctx := context.WithValue(req.Context(), requestIDKey, id)
+	req = req.WithContext(ctx)
+
 	destConn, err := net.Dial("tcp", req.URL.Host)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Error connecting to destination: %v", err), http.StatusBadGateway)
@@ -176,6 +192,10 @@ func (p *Proxy) HandleConnect(w http.ResponseWriter, req *http.Request) {
 				}
 				return
 			}
+
+			// Generate a new UUID v4 for each tunneled request
+			reqID := uuid.New().String()
+			httpReq = httpReq.WithContext(context.WithValue(httpReq.Context(), requestIDKey, reqID))
 
 			if websockets.IsWebSocketRequest(httpReq) {
 				log.Printf("WebSocket connection detected for %s, passing through", httpReq.URL)
@@ -445,6 +465,24 @@ func (p *Proxy) generateCert(host string) (*tls.Certificate, error) {
 	p.CertMutex.Unlock()
 
 	return cert, nil
+}
+
+// GetRequestID retrieves the request ID from the request's context
+func GetRequestID(req *http.Request) string {
+	if id, ok := req.Context().Value(requestIDKey).(string); ok {
+		return id
+	}
+	return "" // Return empty string if no ID found
+}
+
+// GetResponseID retrieves the request ID from the response's request context
+func GetResponseID(resp *http.Response) string {
+	if resp.Request != nil {
+		if id, ok := resp.Request.Context().Value(requestIDKey).(string); ok {
+			return id
+		}
+	}
+	return "" // Return empty string if no ID found or no request
 }
 
 func getRootCAPool(rootCA *x509.Certificate) *x509.CertPool {

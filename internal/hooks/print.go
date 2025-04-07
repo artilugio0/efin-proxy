@@ -5,16 +5,16 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+
+	"github.com/artilugio0/proxy-vibes/internal/proxy" // Import proxy for GetRequestID and GetResponseID
 )
 
 // rawRequestString generates the raw HTTP string for a request
 func rawRequestString(req *http.Request) (string, error) {
 	var buf bytes.Buffer
 
-	// Write request line
 	buf.WriteString(fmt.Sprintf("%s %s %s\r\n", req.Method, req.URL.RequestURI(), req.Proto))
 
-	// Ensure Host header is included
 	host := req.Host
 	if host == "" {
 		host = req.Header.Get("Host")
@@ -23,23 +23,19 @@ func rawRequestString(req *http.Request) (string, error) {
 		req.Header.Set("Host", host)
 	}
 
-	// Write headers
 	for key, values := range req.Header {
 		for _, value := range values {
 			buf.WriteString(fmt.Sprintf("%s: %s\r\n", key, value))
 		}
 	}
 
-	// Write blank line before body
 	buf.WriteString("\r\n")
 
-	// Write body if present
 	if req.Body != nil {
 		bodyBytes, err := io.ReadAll(req.Body)
 		if err != nil {
 			return "", fmt.Errorf("failed to read request body: %v", err)
 		}
-		// Restore body for downstream use
 		req.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
 		buf.Write(bodyBytes)
 	}
@@ -51,26 +47,21 @@ func rawRequestString(req *http.Request) (string, error) {
 func rawResponseString(resp *http.Response) (string, error) {
 	var buf bytes.Buffer
 
-	// Write status line using StatusCode and StatusText to avoid duplication
 	buf.WriteString(fmt.Sprintf("%s %d %s\r\n", resp.Proto, resp.StatusCode, http.StatusText(resp.StatusCode)))
 
-	// Write headers
 	for key, values := range resp.Header {
 		for _, value := range values {
 			buf.WriteString(fmt.Sprintf("%s: %s\r\n", key, value))
 		}
 	}
 
-	// Write blank line before body
 	buf.WriteString("\r\n")
 
-	// Write body if present
 	if resp.Body != nil {
 		bodyBytes, err := io.ReadAll(resp.Body)
 		if err != nil {
 			return "", fmt.Errorf("failed to read response body: %v", err)
 		}
-		// Restore body for downstream use
 		resp.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
 		buf.Write(bodyBytes)
 	}
@@ -78,22 +69,30 @@ func rawResponseString(resp *http.Response) (string, error) {
 	return buf.String(), nil
 }
 
-// LogRawRequest prints the request in raw HTTP format to stdout
+// LogRawRequest prints the request in raw HTTP format to stdout with request ID
 func LogRawRequest(req *http.Request) error {
 	raw, err := rawRequestString(req)
 	if err != nil {
 		return err
 	}
-	fmt.Println(raw)
+	if id := proxy.GetRequestID(req); id != "" {
+		fmt.Printf("Request ID: %s\n%s", id, raw)
+	} else {
+		fmt.Println(raw)
+	}
 	return nil
 }
 
-// LogRawResponse prints the response in raw HTTP format to stdout
+// LogRawResponse prints the response in raw HTTP format to stdout with request ID
 func LogRawResponse(resp *http.Response) error {
 	raw, err := rawResponseString(resp)
 	if err != nil {
 		return err
 	}
-	fmt.Println(raw)
+	if id := proxy.GetResponseID(resp); id != "" {
+		fmt.Printf("Response ID: %s\n%s", id, raw)
+	} else {
+		fmt.Println(raw)
+	}
 	return nil
 }

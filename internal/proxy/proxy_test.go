@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync"
 	"testing"
@@ -224,5 +225,308 @@ func TestServeHTTPOutOfScope(t *testing.T) {
 	}
 	if !strings.Contains(response, "Success") {
 		t.Errorf("Expected response 'Success', got %s", response)
+	}
+}
+
+// TestServeHTTPWithID tests ID accessibility and consistency in ServeHTTP
+func TestServeHTTPWithID(t *testing.T) {
+	_, rootKey, _, _, err := certs.GenerateRootCA()
+	if err != nil {
+		t.Fatalf("Failed to generate Root CA: %v", err)
+	}
+
+	p := NewProxy(nil, rootKey)
+	var requestID, responseID string
+
+	// Hook to capture request ID
+	p.RequestInPipeline = append(p.RequestInPipeline, func(req *http.Request) error {
+		requestID = GetRequestID(req)
+		return nil
+	})
+	// Hook to capture response ID
+	p.ResponseInPipeline = append(p.ResponseInPipeline, func(resp *http.Response) error {
+		responseID = GetResponseID(resp)
+		return nil
+	})
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("Success"))
+	}))
+	defer server.Close()
+
+	p.Client = &http.Client{
+		Transport: &http.Transport{},
+	}
+
+	req := httptest.NewRequest("GET", server.URL, nil)
+	w := httptest.NewRecorder()
+
+	p.ServeHTTP(w, req)
+
+	resp := w.Result()
+	body, _ := io.ReadAll(resp.Body)
+	response := string(body)
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", resp.StatusCode)
+	}
+	if !strings.Contains(response, "Success") {
+		t.Errorf("Expected response 'Success', got %s", response)
+	}
+
+	// Check IDs are accessible
+	if requestID == "" {
+		t.Errorf("Expected request ID to be set, got empty string")
+	}
+	if responseID == "" {
+		t.Errorf("Expected response ID to be set, got empty string")
+	}
+
+	// Check request and response have the same ID
+	if requestID != responseID {
+		t.Errorf("Expected request ID %q to match response ID %q", requestID, responseID)
+	}
+}
+
+// TestServeHTTPDifferentIDs tests that different requests have unique IDs
+func TestServeHTTPDifferentIDs(t *testing.T) {
+	_, rootKey, _, _, err := certs.GenerateRootCA()
+	if err != nil {
+		t.Fatalf("Failed to generate Root CA: %v", err)
+	}
+
+	p := NewProxy(nil, rootKey)
+	ids := make([]string, 2)
+
+	// Hook to capture request IDs
+	p.RequestInPipeline = append(p.RequestInPipeline, func(req *http.Request) error {
+		if len(ids[0]) == 0 {
+			ids[0] = GetRequestID(req)
+		} else {
+			ids[1] = GetRequestID(req)
+		}
+		return nil
+	})
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("Success"))
+	}))
+	defer server.Close()
+
+	p.Client = &http.Client{
+		Transport: &http.Transport{},
+	}
+
+	// First request
+	req1 := httptest.NewRequest("GET", server.URL+"/1", nil)
+	w1 := httptest.NewRecorder()
+	p.ServeHTTP(w1, req1)
+
+	// Second request
+	req2 := httptest.NewRequest("GET", server.URL+"/2", nil)
+	w2 := httptest.NewRecorder()
+	p.ServeHTTP(w2, req2)
+
+	// Check responses
+	for i, w := range []*httptest.ResponseRecorder{w1, w2} {
+		resp := w.Result()
+		body, _ := io.ReadAll(resp.Body)
+		response := string(body)
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("Request %d: Expected status 200, got %d", i+1, resp.StatusCode)
+		}
+		if !strings.Contains(response, "Success") {
+			t.Errorf("Request %d: Expected response 'Success', got %s", i+1, response)
+		}
+	}
+
+	// Check IDs are accessible and different
+	if ids[0] == "" || ids[1] == "" {
+		t.Errorf("Expected all request IDs to be set, got %v", ids)
+	}
+	if ids[0] == ids[1] {
+		t.Errorf("Expected different IDs, got %q for both requests", ids[0])
+	}
+}
+
+// TestHandleConnectWithID tests ID accessibility and consistency in HandleConnect
+func TestHandleConnectWithID(t *testing.T) {
+	rootCA, rootKey, certPEM, _, err := certs.GenerateRootCA()
+	if err != nil {
+		t.Fatalf("Failed to generate Root CA: %v", err)
+	}
+	certBlock, _ := pem.Decode([]byte(certPEM))
+	if certBlock == nil {
+		t.Fatal("Failed to decode Root CA PEM")
+	}
+	parsedRootCA, err := x509.ParseCertificate(certBlock.Bytes)
+	if err != nil {
+		t.Fatalf("Failed to parse Root CA: %v", err)
+	}
+
+	p := NewProxy(rootCA, rootKey)
+	var requestID, responseID string
+
+	// Hook to capture request ID
+	p.RequestInPipeline = append(p.RequestInPipeline, func(req *http.Request) error {
+		requestID = GetRequestID(req)
+		return nil
+	})
+	// Hook to capture response ID
+	p.ResponseInPipeline = append(p.ResponseInPipeline, func(resp *http.Response) error {
+		responseID = GetResponseID(resp)
+		return nil
+	})
+
+	serverCert, err := certs.GenerateCert([]string{"localhost", "127.0.0.1"}, rootCA, rootKey)
+	if err != nil {
+		t.Fatalf("Failed to generate server certificate: %v", err)
+	}
+	destServer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("Success"))
+	}))
+	destServer.TLS.Certificates = []tls.Certificate{*serverCert}
+	defer destServer.Close()
+
+	destAddr := destServer.Listener.Addr().String()
+
+	proxyServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		p.HandleConnect(w, r)
+	}))
+	defer proxyServer.Close()
+
+	proxyURL, _ := url.Parse("http://" + proxyServer.Listener.Addr().String())
+	client := &http.Client{
+		Transport: &http.Transport{
+			Proxy: http.ProxyURL(proxyURL),
+			TLSClientConfig: &tls.Config{
+				RootCAs: getRootCAPool(parsedRootCA),
+			},
+		},
+	}
+
+	resp, err := client.Get("https://localhost:" + destAddr[strings.LastIndex(destAddr, ":")+1:])
+	if err != nil {
+		t.Fatalf("Failed to perform request through proxy: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("Failed to read response body: %v", err)
+	}
+	response := string(body)
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", resp.StatusCode)
+	}
+	if !strings.Contains(response, "Success") {
+		t.Errorf("Expected response 'Success', got %s", response)
+	}
+
+	// Check IDs are accessible
+	if requestID == "" {
+		t.Errorf("Expected request ID to be set, got empty string")
+	}
+	if responseID == "" {
+		t.Errorf("Expected response ID to be set, got empty string")
+	}
+
+	// Check request and response have the same ID
+	if requestID != responseID {
+		t.Errorf("Expected request ID %q to match response ID %q", requestID, responseID)
+	}
+}
+
+// TestHandleConnectDifferentIDs tests that different requests in HandleConnect have unique IDs
+func TestHandleConnectDifferentIDs(t *testing.T) {
+	rootCA, rootKey, certPEM, _, err := certs.GenerateRootCA()
+	if err != nil {
+		t.Fatalf("Failed to generate Root CA: %v", err)
+	}
+	certBlock, _ := pem.Decode([]byte(certPEM))
+	if certBlock == nil {
+		t.Fatal("Failed to decode Root CA PEM")
+	}
+	parsedRootCA, err := x509.ParseCertificate(certBlock.Bytes)
+	if err != nil {
+		t.Fatalf("Failed to parse Root CA: %v", err)
+	}
+
+	p := NewProxy(rootCA, rootKey)
+	ids := make([]string, 2)
+	var mu sync.Mutex
+	requestCount := 0
+
+	// Hook to capture request IDs
+	p.RequestInPipeline = append(p.RequestInPipeline, func(req *http.Request) error {
+		mu.Lock()
+		defer mu.Unlock()
+		if requestCount < 2 {
+			ids[requestCount] = GetRequestID(req)
+			requestCount++
+		}
+		return nil
+	})
+
+	serverCert, err := certs.GenerateCert([]string{"localhost", "127.0.0.1"}, rootCA, rootKey)
+	if err != nil {
+		t.Fatalf("Failed to generate server certificate: %v", err)
+	}
+	destServer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("Success"))
+	}))
+	destServer.TLS.Certificates = []tls.Certificate{*serverCert}
+	defer destServer.Close()
+
+	destAddr := destServer.Listener.Addr().String()
+
+	proxyServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		p.HandleConnect(w, r)
+	}))
+	defer proxyServer.Close()
+
+	proxyURL, _ := url.Parse("http://" + proxyServer.Listener.Addr().String())
+	client := &http.Client{
+		Transport: &http.Transport{
+			Proxy: http.ProxyURL(proxyURL),
+			TLSClientConfig: &tls.Config{
+				RootCAs: getRootCAPool(parsedRootCA),
+			},
+		},
+	}
+
+	// First request
+	resp1, err := client.Get("https://localhost:" + destAddr[strings.LastIndex(destAddr, ":")+1:] + "/1")
+	if err != nil {
+		t.Fatalf("First request failed: %v", err)
+	}
+	defer resp1.Body.Close()
+
+	// Second request
+	resp2, err := client.Get("https://localhost:" + destAddr[strings.LastIndex(destAddr, ":")+1:] + "/2")
+	if err != nil {
+		t.Fatalf("Second request failed: %v", err)
+	}
+	defer resp2.Body.Close()
+
+	// Check responses
+	for i, resp := range []*http.Response{resp1, resp2} {
+		body, _ := io.ReadAll(resp.Body)
+		response := string(body)
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("Request %d: Expected status 200, got %d", i+1, resp.StatusCode)
+		}
+		if !strings.Contains(response, "Success") {
+			t.Errorf("Request %d: Expected response 'Success', got %s", i+1, response)
+		}
+	}
+
+	// Check IDs are accessible and different
+	if ids[0] == "" || ids[1] == "" {
+		t.Errorf("Expected all request IDs to be set, got %v", ids)
+	}
+	if ids[0] == ids[1] {
+		t.Errorf("Expected different IDs, got %q for both requests", ids[0])
 	}
 }

@@ -446,3 +446,9 @@ func (p *Proxy) generateCert(host string) (*tls.Certificate, error) {
 
 	return cert, nil
 }
+
+func getRootCAPool(rootCA *x509.Certificate) *x509.CertPool {
+	pool := x509.NewCertPool()
+	pool.AddCert(rootCA)
+	return pool
+}

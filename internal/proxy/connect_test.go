@@ -185,9 +185,3 @@ func TestHandleConnectInvalidDestination(t *testing.T) {
 		t.Errorf("Expected status %d, got %d", http.StatusBadGateway, resp.StatusCode)
 	}
 }
-
-func getRootCAPool(rootCA *x509.Certificate) *x509.CertPool {
-	pool := x509.NewCertPool()
-	pool.AddCert(rootCA)
-	return pool
-}

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -133,7 +134,6 @@ func TestLogRawRequest(t *testing.T) {
 			p := proxy.NewProxy(nil, nil)
 			var capturedRequestID string
 
-			// Hook to capture the request ID
 			p.RequestInPipeline = append(p.RequestInPipeline, func(req *http.Request) error {
 				capturedRequestID = proxy.GetRequestID(req)
 				return nil
@@ -145,7 +145,6 @@ func TestLogRawRequest(t *testing.T) {
 			}))
 			defer server.Close()
 
-			// Redirect stdout to capture output
 			oldStdout := os.Stdout
 			r, w, _ := os.Pipe()
 			os.Stdout = w
@@ -194,7 +193,6 @@ func TestLogRawResponse(t *testing.T) {
 			p := proxy.NewProxy(nil, nil)
 			var capturedResponseID string
 
-			// Hook to capture the response ID
 			p.ResponseInPipeline = append(p.ResponseInPipeline, func(resp *http.Response) error {
 				capturedResponseID = proxy.GetResponseID(resp)
 				return nil
@@ -207,7 +205,6 @@ func TestLogRawResponse(t *testing.T) {
 			}))
 			defer server.Close()
 
-			// Redirect stdout to capture output
 			oldStdout := os.Stdout
 			r, w, _ := os.Pipe()
 			os.Stdout = w
@@ -220,7 +217,6 @@ func TestLogRawResponse(t *testing.T) {
 			w.Close()
 			os.Stdout = oldStdout
 
-			// Use resp to avoid "declared and not used" error
 			if resp.StatusCode != http.StatusOK {
 				t.Errorf("Expected status 200, got %d", resp.StatusCode)
 			}
@@ -233,7 +229,6 @@ func TestLogRawResponse(t *testing.T) {
 				t.Errorf("Expected response ID to be set, got empty string")
 			}
 
-			// Check prefix, suffix, and key content
 			expectedPrefix := fmt.Sprintf("---------- PROXY-VIBES RESPONSE START: %s ----------\r\n", capturedResponseID)
 			expectedSuffix := fmt.Sprintf("---------- PROXY-VIBES RESPONSE END: %s ----------\r\n", capturedResponseID)
 			expectedContains := []string{
@@ -251,6 +246,124 @@ func TestLogRawResponse(t *testing.T) {
 			for _, content := range expectedContains {
 				if !strings.Contains(got, content) {
 					t.Errorf("LogRawResponse() output missing %q, got %q", content, got)
+				}
+			}
+		})
+	}
+}
+
+func TestSaveHooks(t *testing.T) {
+	tests := []struct {
+		name    string
+		dir     string
+		wantErr bool
+	}{
+		{
+			name:    "Default directory (empty)",
+			dir:     "",
+			wantErr: false,
+		},
+		{
+			name:    "Custom directory",
+			dir:     "test-dir",
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create temporary directory
+			tempDir, err := os.MkdirTemp("", "proxy-vibes-test")
+			if err != nil {
+				t.Fatalf("Failed to create temp dir: %v", err)
+			}
+			defer os.RemoveAll(tempDir)
+
+			// Use tempDir as base, adjust dir accordingly
+			saveDir := tt.dir
+			if saveDir == "" {
+				saveDir = tempDir
+			} else {
+				saveDir = filepath.Join(tempDir, tt.dir)
+				if err := os.MkdirAll(saveDir, 0755); err != nil {
+					t.Fatalf("Failed to create save dir: %v", err)
+				}
+			}
+
+			p := proxy.NewProxy(nil, nil)
+			var capturedRequestID, capturedResponseID string
+
+			// Get save hooks
+			saveRequest, saveResponse := NewFileSaveHooks(saveDir)
+
+			// Capture IDs
+			p.RequestInPipeline = append(p.RequestInPipeline, func(req *http.Request) error {
+				capturedRequestID = proxy.GetRequestID(req)
+				return nil
+			}, saveRequest)
+			p.ResponseInPipeline = append(p.ResponseInPipeline, func(resp *http.Response) error {
+				capturedResponseID = proxy.GetResponseID(resp)
+				return nil
+			}, saveResponse)
+
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "text/plain")
+				w.Write([]byte("Success"))
+			}))
+			defer server.Close()
+
+			req := httptest.NewRequest("GET", server.URL+"/path", nil)
+			recorder := httptest.NewRecorder()
+			p.ServeHTTP(recorder, req)
+			resp := recorder.Result()
+
+			// Check request file
+			reqFile := filepath.Join(saveDir, fmt.Sprintf("request-%s.txt", capturedRequestID))
+			reqContent, err := os.ReadFile(reqFile)
+			if err != nil {
+				t.Errorf("Failed to read request file %s: %v", reqFile, err)
+			}
+			expectedReq, _ := RawRequestBytes(req)
+			reqLines := strings.Split(string(reqContent), "\r\n")
+			expectedReqLines := strings.Split(string(expectedReq), "\r\n")
+			for _, expectedLine := range expectedReqLines {
+				if expectedLine == "" {
+					continue // Skip empty lines (e.g., between headers and body)
+				}
+				found := false
+				for _, line := range reqLines {
+					if line == expectedLine {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("Request file %s missing line %q, got %q", reqFile, expectedLine, reqContent)
+				}
+			}
+
+			// Check response file
+			respFile := filepath.Join(saveDir, fmt.Sprintf("response-%s.txt", capturedResponseID))
+			respContent, err := os.ReadFile(respFile)
+			if err != nil {
+				t.Errorf("Failed to read response file %s: %v", respFile, err)
+			}
+			expectedResp, _ := RawResponseBytes(resp)
+			respLines := strings.Split(string(respContent), "\r\n")
+			expectedRespLines := strings.Split(string(expectedResp), "\r\n")
+			for _, expectedLine := range expectedRespLines {
+				if expectedLine == "" {
+					continue // Skip empty lines
+				}
+				found := false
+				for _, line := range respLines {
+					if line == expectedLine {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("Response file %s missing line %q, got %q", respFile, expectedLine, respContent)
 				}
 			}
 		})

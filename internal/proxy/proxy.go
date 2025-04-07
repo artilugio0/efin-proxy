@@ -29,7 +29,10 @@ type ResponseInOutFunc func(*http.Response) error
 // ResponseModFunc defines the signature for read/write response pipeline functions
 type ResponseModFunc func(*http.Response) (*http.Response, error)
 
-// Proxy struct holds the proxy configuration with request and response pipelines
+// InScopeFunc defines the signature for determining if a request is in scope
+type InScopeFunc func(*http.Request) bool
+
+// Proxy struct holds the proxy configuration with pipelines and scope function
 type Proxy struct {
 	RequestInPipeline   []RequestInOutFunc  // First request pipeline: read-only
 	RequestModPipeline  []RequestModFunc    // Second request pipeline: read/write
@@ -37,6 +40,7 @@ type Proxy struct {
 	ResponseInPipeline  []ResponseInOutFunc // First response pipeline: read-only
 	ResponseModPipeline []ResponseModFunc   // Second response pipeline: read/write
 	ResponseOutPipeline []ResponseInOutFunc // Third response pipeline: read-only
+	InScopeFunc         InScopeFunc         // Function to determine request scope
 	Client              *http.Client
 	CertCache           map[string]*tls.Certificate
 	CertMutex           sync.RWMutex
@@ -44,7 +48,7 @@ type Proxy struct {
 	RootKey             *rsa.PrivateKey
 }
 
-// NewProxy creates a new proxy instance with empty pipelines
+// NewProxy creates a new proxy instance with empty pipelines and default in-scope function
 func NewProxy(rootCA *x509.Certificate, rootKey *rsa.PrivateKey) *Proxy {
 	return &Proxy{
 		RequestInPipeline:   []RequestInOutFunc{},
@@ -53,6 +57,7 @@ func NewProxy(rootCA *x509.Certificate, rootKey *rsa.PrivateKey) *Proxy {
 		ResponseInPipeline:  []ResponseInOutFunc{},
 		ResponseModPipeline: []ResponseModFunc{},
 		ResponseOutPipeline: []ResponseInOutFunc{},
+		InScopeFunc:         func(*http.Request) bool { return true }, // Default: all requests in scope
 		Client: &http.Client{
 			Transport: &http.Transport{
 				Proxy: http.ProxyFromEnvironment,
@@ -68,16 +73,23 @@ func NewProxy(rootCA *x509.Certificate, rootKey *rsa.PrivateKey) *Proxy {
 	}
 }
 
-// ServeHTTP handles incoming HTTP requests and responses through their respective pipelines
+// ServeHTTP handles incoming HTTP requests and responses with scope checking
 func (p *Proxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	finalReq, err := p.processRequestPipelines(req)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Request pipeline error: %v", err), http.StatusInternalServerError)
-		return
-	}
+	var finalReq *http.Request
+	var err error
 
-	log.Printf("Original request: %s %s", req.Method, req.URL)
-	log.Printf("Final request: %s %s", finalReq.Method, finalReq.URL)
+	if p.InScopeFunc(req) {
+		finalReq, err = p.processRequestPipelines(req)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Request pipeline error: %v", err), http.StatusInternalServerError)
+			return
+		}
+		log.Printf("Original request: %s %s", req.Method, req.URL)
+		log.Printf("Final request: %s %s", finalReq.Method, finalReq.URL)
+	} else {
+		finalReq = cloneRequest(req) // Still clone to avoid modifying original
+		log.Printf("Request out of scope: %s %s", req.Method, req.URL)
+	}
 
 	finalReq.RequestURI = ""
 
@@ -88,10 +100,15 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 	defer resp.Body.Close()
 
-	finalResp, err := p.processResponsePipelines(resp)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Response pipeline error: %v", err), http.StatusInternalServerError)
-		return
+	var finalResp *http.Response
+	if p.InScopeFunc(req) {
+		finalResp, err = p.processResponsePipelines(resp)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Response pipeline error: %v", err), http.StatusInternalServerError)
+			return
+		}
+	} else {
+		finalResp = cloneResponse(resp) // Clone to ensure isolation
 	}
 
 	for key, values := range finalResp.Header {
@@ -101,7 +118,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 	w.WriteHeader(finalResp.StatusCode)
 	io.Copy(w, finalResp.Body)
-	finalResp.Body.Close() // Close the modified response body
+	finalResp.Body.Close()
 }
 
 // HandleConnect handles HTTPS CONNECT requests with MITM and pipeline processing
@@ -182,14 +199,19 @@ func (p *Proxy) HandleConnect(w http.ResponseWriter, req *http.Request) {
 				return
 			}
 
-			finalReq, err := p.processRequestPipelines(httpReq)
-			if err != nil {
-				log.Printf("Request pipeline error: %v", err)
-				return
+			var finalReq *http.Request
+			if p.InScopeFunc(httpReq) {
+				finalReq, err = p.processRequestPipelines(httpReq)
+				if err != nil {
+					log.Printf("Request pipeline error: %v", err)
+					return
+				}
+				log.Printf("Original CONNECT request: %s %s", httpReq.Method, httpReq.URL)
+				log.Printf("Modified CONNECT request: %s %s", finalReq.Method, finalReq.URL)
+			} else {
+				finalReq = cloneRequest(httpReq)
+				log.Printf("Request out of scope: %s %s", httpReq.Method, httpReq.URL)
 			}
-
-			log.Printf("Original CONNECT request: %s %s", httpReq.Method, httpReq.URL)
-			log.Printf("Modified CONNECT request: %s %s", finalReq.Method, finalReq.URL)
 
 			err = finalReq.Write(tlsDestConn)
 			if err != nil {
@@ -204,10 +226,15 @@ func (p *Proxy) HandleConnect(w http.ResponseWriter, req *http.Request) {
 			}
 			defer resp.Body.Close()
 
-			finalResp, err := p.processResponsePipelines(resp)
-			if err != nil {
-				log.Printf("Response pipeline error: %v", err)
-				return
+			var finalResp *http.Response
+			if p.InScopeFunc(httpReq) {
+				finalResp, err = p.processResponsePipelines(resp)
+				if err != nil {
+					log.Printf("Response pipeline error: %v", err)
+					return
+				}
+			} else {
+				finalResp = cloneResponse(resp)
 			}
 
 			err = finalResp.Write(tlsClientConn)
@@ -215,7 +242,7 @@ func (p *Proxy) HandleConnect(w http.ResponseWriter, req *http.Request) {
 				log.Printf("Error writing response to client: %v", err)
 				return
 			}
-			finalResp.Body.Close() // Close the modified response body
+			finalResp.Body.Close()
 		}
 	}()
 }
@@ -289,7 +316,6 @@ func (p *Proxy) processRequestPipelines(req *http.Request) (*http.Request, error
 func (p *Proxy) processResponsePipelines(resp *http.Response) (*http.Response, error) {
 	currentResp := cloneResponse(resp)
 
-	// First pipeline: ResponseInPipeline (read-only, concurrent)
 	if len(p.ResponseInPipeline) > 0 {
 		var wg sync.WaitGroup
 		errChan := make(chan error, len(p.ResponseInPipeline))
@@ -315,7 +341,6 @@ func (p *Proxy) processResponsePipelines(resp *http.Response) (*http.Response, e
 		}
 	}
 
-	// Second pipeline: ResponseModPipeline (read/write, sequential)
 	for _, fn := range p.ResponseModPipeline {
 		modifiedResp, err := fn(currentResp)
 		if err != nil {
@@ -324,7 +349,6 @@ func (p *Proxy) processResponsePipelines(resp *http.Response) (*http.Response, e
 		currentResp = modifiedResp
 	}
 
-	// Third pipeline: ResponseOutPipeline (read-only, concurrent)
 	if len(p.ResponseOutPipeline) > 0 {
 		var wg sync.WaitGroup
 		errChan := make(chan error, len(p.ResponseOutPipeline))

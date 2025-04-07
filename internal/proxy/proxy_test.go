@@ -189,3 +189,40 @@ func TestGenerateCert(t *testing.T) {
 		}
 	}
 }
+
+func TestServeHTTPOutOfScope(t *testing.T) {
+	_, rootKey, _, _, err := certs.GenerateRootCA()
+	if err != nil {
+		t.Fatalf("Failed to generate Root CA: %v", err)
+	}
+
+	p := NewProxy(nil, rootKey)
+	p.InScopeFunc = func(req *http.Request) bool {
+		return false // Out of scope
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("Success"))
+	}))
+	defer server.Close()
+
+	p.Client = &http.Client{
+		Transport: &http.Transport{},
+	}
+
+	req := httptest.NewRequest("GET", server.URL, nil)
+	w := httptest.NewRecorder()
+
+	p.ServeHTTP(w, req)
+
+	resp := w.Result()
+	body, _ := io.ReadAll(resp.Body)
+	response := string(body)
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", resp.StatusCode)
+	}
+	if !strings.Contains(response, "Success") {
+		t.Errorf("Expected response 'Success', got %s", response)
+	}
+}

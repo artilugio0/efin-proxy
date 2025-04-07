@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 
 	"github.com/artilugio0/proxy-vibes/internal/proxy"
 )
@@ -99,4 +101,39 @@ func LogRawResponse(resp *http.Response) error {
 	footer := fmt.Sprintf("---------- PROXY-VIBES RESPONSE END: %s ----------\r\n", id)
 	fmt.Printf("%s%s%s", header, raw, footer)
 	return nil
+}
+
+// NewFileSaveHooks returns request and response hooks that save to files in the specified directory
+func NewFileSaveHooks(dir string) (proxy.RequestInOutFunc, proxy.ResponseInOutFunc) {
+	if dir == "" {
+		dir = "." // Default to current directory
+	}
+
+	saveRequest := func(req *http.Request) error {
+		raw, err := RawRequestBytes(req)
+		if err != nil {
+			return err
+		}
+		id := proxy.GetRequestID(req)
+		if id == "" {
+			id = "unknown"
+		}
+		filename := filepath.Join(dir, fmt.Sprintf("request-%s.txt", id))
+		return os.WriteFile(filename, raw, 0644)
+	}
+
+	saveResponse := func(resp *http.Response) error {
+		raw, err := RawResponseBytes(resp)
+		if err != nil {
+			return err
+		}
+		id := proxy.GetResponseID(resp)
+		if id == "" {
+			id = "unknown"
+		}
+		filename := filepath.Join(dir, fmt.Sprintf("response-%s.txt", id))
+		return os.WriteFile(filename, raw, 0644)
+	}
+
+	return saveRequest, saveResponse
 }

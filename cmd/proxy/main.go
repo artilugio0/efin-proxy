@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"github.com/artilugio0/proxy-vibes/internal/certs"
+	"github.com/artilugio0/proxy-vibes/internal/hooks" // New import
 	"github.com/artilugio0/proxy-vibes/internal/proxy"
 )
 
@@ -39,16 +40,19 @@ func main() {
 	}
 
 	p := proxy.NewProxy(rootCA, rootKey)
+	p.RequestInPipeline = append(p.RequestInPipeline, hooks.LogRawRequest) // Use from hooks package
 	p.RequestModPipeline = append(p.RequestModPipeline, func(req *http.Request) (*http.Request, error) {
 		req.Header.Set("X-Modified", "true")
 		return req, nil
 	})
 
+	p.ResponseInPipeline = append(p.ResponseInPipeline, hooks.LogRawResponse) // Add response hook
+
 	server := &http.Server{
 		Addr: ":8080",
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.Method == http.MethodConnect {
-				p.HandleConnect(w, r) // Call as method on p
+				p.HandleConnect(w, r)
 			} else {
 				p.ServeHTTP(w, r)
 			}

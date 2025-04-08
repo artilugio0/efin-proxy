@@ -157,7 +157,7 @@ func saveRequestToDB(db *sql.DB, req *http.Request) error {
             VALUES (?, ?, ?, ?)
         `, id, req.Method, req.URL.String(), string(body))
 		if err == nil {
-			// Insert headers
+			// Insert headers, including Host if present
 			for name, values := range req.Header {
 				for _, value := range values {
 					_, err = tx.Exec(`
@@ -168,6 +168,18 @@ func saveRequestToDB(db *sql.DB, req *http.Request) error {
 						tx.Rollback()
 						return fmt.Errorf("failed to save request header %s: %v", name, err)
 					}
+				}
+			}
+
+			// Explicitly save the Host header if it’s set and not already in Header map
+			if req.Host != "" && req.Header.Get("Host") == "" {
+				_, err = tx.Exec(`
+                    INSERT INTO headers (request_id, response_id, name, value)
+                    VALUES (?, NULL, ?, ?)
+                `, id, "Host", req.Host)
+				if err != nil {
+					tx.Rollback()
+					return fmt.Errorf("failed to save request Host header: %v", err)
 				}
 			}
 

@@ -24,6 +24,7 @@ func main() {
 	saveDir := flag.String("d", "", "Directory to save request/response files (empty to disable)")
 	dbFileShort := flag.String("D", "", "Path to SQLite database file (short form, empty to disable)")
 	dbFileLong := flag.String("db-file", "", "Path to SQLite database file (long form, empty to disable)")
+	printLogs := flag.Bool("p", false, "Enable raw request/response logging to stdout")
 	flag.Parse()
 
 	var db *sql.DB
@@ -80,13 +81,18 @@ func main() {
 
 	p := proxy.NewProxy(rootCA, rootKey)
 
-	// Add logging hooks (always enabled)
-	p.RequestOutPipeline = append(p.RequestOutPipeline, hooks.LogRawRequest)
+	// Add logging hooks only if -p is set
+	if *printLogs {
+		p.RequestOutPipeline = append(p.RequestOutPipeline, hooks.LogRawRequest)
+		p.ResponseInPipeline = append(p.ResponseInPipeline, hooks.LogRawResponse)
+		log.Printf("Enabled raw request/response logging to stdout")
+	}
+
+	// Always add the Accept-Encoding removal hook (independent of flags)
 	p.RequestModPipeline = append(p.RequestModPipeline, func(r *http.Request) (*http.Request, error) {
 		r.Header.Del("Accept-Encoding")
 		return r, nil
 	})
-	p.ResponseInPipeline = append(p.ResponseInPipeline, hooks.LogRawResponse)
 
 	// Add database save hooks only if database is initialized (-D or -db-file)
 	if db != nil {

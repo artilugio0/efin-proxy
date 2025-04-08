@@ -99,7 +99,6 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		log.Printf("Final request: %s %s", finalReq.Method, finalReq.URL)
 	} else {
 		finalReq = req
-		log.Printf("Request out of scope: %s %s", req.Method, req.URL)
 	}
 
 	finalReq.RequestURI = ""
@@ -228,7 +227,6 @@ func (p *Proxy) HandleConnect(w http.ResponseWriter, req *http.Request) {
 				}
 			} else {
 				finalReq = httpReq
-				log.Printf("Request out of scope: %s %s", httpReq.Method, httpReq.URL)
 			}
 
 			err = finalReq.Write(tlsDestConn)

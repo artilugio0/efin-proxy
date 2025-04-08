@@ -3,12 +3,15 @@ package main
 import (
 	"crypto/rsa"
 	"crypto/x509"
+	"database/sql"
 	"flag"
 	"fmt"
 	"log"
 	"net/http"
 	"path"
 	"strings"
+
+	_ "modernc.org/sqlite" // SQLite driver
 
 	"github.com/artilugio0/proxy-vibes/internal/certs"
 	"github.com/artilugio0/proxy-vibes/internal/hooks"
@@ -19,7 +22,33 @@ func main() {
 	certFile := flag.String("cert", "", "Path to Root CA certificate file (PEM)")
 	keyFile := flag.String("key", "", "Path to Root CA private key file (PEM)")
 	saveDir := flag.String("d", "", "Directory to save request/response files (empty to disable)")
+	dbFileShort := flag.String("D", "", "Path to SQLite database file (short form, empty to disable)")
+	dbFileLong := flag.String("db-file", "", "Path to SQLite database file (long form, empty to disable)")
 	flag.Parse()
+
+	var db *sql.DB
+	var err error
+
+	// Determine database path from -D or -db-file (priority: -db-file > -D)
+	dbPath := *dbFileLong
+	if dbPath == "" {
+		dbPath = *dbFileShort
+	}
+
+	// Only initialize database if -D or -db-file is set
+	if dbPath != "" {
+		db, err = sql.Open("sqlite", dbPath)
+		if err != nil {
+			log.Fatalf("Failed to open SQLite database: %v", err)
+		}
+		defer db.Close()
+
+		// Create tables if they don’t exist
+		err = hooks.InitDatabase(db)
+		if err != nil {
+			log.Fatalf("Failed to initialize database: %v", err)
+		}
+	}
 
 	var rootCA *x509.Certificate
 	var rootKey *rsa.PrivateKey
@@ -51,13 +80,23 @@ func main() {
 
 	p := proxy.NewProxy(rootCA, rootKey)
 
+	// Add logging hooks (always enabled)
 	p.RequestOutPipeline = append(p.RequestOutPipeline, hooks.LogRawRequest)
 	p.RequestModPipeline = append(p.RequestModPipeline, func(r *http.Request) (*http.Request, error) {
 		r.Header.Del("Accept-Encoding")
 		return r, nil
 	})
 	p.ResponseInPipeline = append(p.ResponseInPipeline, hooks.LogRawResponse)
-	// Only add save hooks if the d flag is specified and not empty
+
+	// Add database save hooks only if database is initialized (-D or -db-file)
+	if db != nil {
+		saveRequest, saveResponse := hooks.NewDBSaveHooks(db)
+		p.RequestOutPipeline = append(p.RequestOutPipeline, saveRequest)
+		p.ResponseInPipeline = append(p.ResponseInPipeline, saveResponse)
+		log.Printf("Saving requests and responses to database at %s", dbPath)
+	}
+
+	// Add file save hooks if directory is specified (-d)
 	if *saveDir != "" {
 		saveRequest, saveResponse := hooks.NewFileSaveHooks(*saveDir)
 		p.RequestOutPipeline = append(p.RequestOutPipeline, saveRequest)
@@ -81,25 +120,17 @@ func main() {
 	log.Fatal(server.ListenAndServe())
 }
 
+// IsInScope and other helper functions remain unchanged...
 func IsInScope(r *http.Request) bool {
 	return !IsMultimediaRequest(r) && !IsBinaryDataRequest(r)
 }
 
-// IsMultimediaRequest checks if the request is for a multimedia resource
-// (image, video, or audio) based on the URL's file extension
 func IsMultimediaRequest(r *http.Request) bool {
-	// Get the path from the request URL
 	urlPath := r.URL.Path
-
-	// Extract the file extension (converted to lowercase for consistency)
 	ext := strings.ToLower(path.Ext(urlPath))
-
-	// If there's no extension, it's not a multimedia file
 	if ext == "" {
 		return false
 	}
-
-	// Lists of common multimedia file extensions
 	imageExtensions := map[string]bool{
 		".jpg":  true,
 		".jpeg": true,
@@ -109,7 +140,6 @@ func IsMultimediaRequest(r *http.Request) bool {
 		".webp": true,
 		".svg":  true,
 	}
-
 	videoExtensions := map[string]bool{
 		".mp4":  true,
 		".m4v":  true,
@@ -120,7 +150,6 @@ func IsMultimediaRequest(r *http.Request) bool {
 		".webm": true,
 		".mkv":  true,
 	}
-
 	audioExtensions := map[string]bool{
 		".mp3":  true,
 		".m4a":  true,
@@ -129,28 +158,16 @@ func IsMultimediaRequest(r *http.Request) bool {
 		".flac": true,
 		".aac":  true,
 	}
-
-	// Check if the extension matches any multimedia type
 	return imageExtensions[ext] || videoExtensions[ext] || audioExtensions[ext]
 }
 
-// IsBinaryDataRequest checks if the request is for a binary data resource
-// (excluding multimedia types like images, videos, and audio)
 func IsBinaryDataRequest(r *http.Request) bool {
-	// Get the path from the request URL
 	urlPath := r.URL.Path
-
-	// Extract the file extension (converted to lowercase for consistency)
 	ext := strings.ToLower(path.Ext(urlPath))
-
-	// If there's no extension, assume it's not a binary file
 	if ext == "" {
 		return false
 	}
-
-	// Define multimedia extensions to exclude them
 	multimediaExtensions := map[string]bool{
-		// Image extensions
 		".jpg":  true,
 		".jpeg": true,
 		".png":  true,
@@ -158,7 +175,6 @@ func IsBinaryDataRequest(r *http.Request) bool {
 		".bmp":  true,
 		".webp": true,
 		".svg":  true,
-		// Video extensions
 		".mp4":  true,
 		".m4v":  true,
 		".mov":  true,
@@ -167,7 +183,6 @@ func IsBinaryDataRequest(r *http.Request) bool {
 		".flv":  true,
 		".webm": true,
 		".mkv":  true,
-		// Audio extensions
 		".mp3":  true,
 		".m4a":  true,
 		".wav":  true,
@@ -175,26 +190,22 @@ func IsBinaryDataRequest(r *http.Request) bool {
 		".flac": true,
 		".aac":  true,
 	}
-
-	// Define common binary data extensions (non-multimedia)
 	binaryExtensions := map[string]bool{
-		".pdf":  true, // PDF documents
-		".doc":  true, // Word documents (older binary format)
-		".docx": true, // Word documents (XML-based but often treated as binary)
-		".xls":  true, // Excel spreadsheets (older binary format)
-		".xlsx": true, // Excel spreadsheets
-		".zip":  true, // Zip archives
-		".rar":  true, // RAR archives
-		".tar":  true, // Tar archives
-		".gz":   true, // Gzip files
-		".exe":  true, // Windows executables
-		".dll":  true, // Dynamic link libraries
-		".bin":  true, // Generic binary files
-		".iso":  true, // Disk images
-		".dat":  true, // Generic data files
-		".db":   true, // Database files
+		".pdf":  true,
+		".doc":  true,
+		".docx": true,
+		".xls":  true,
+		".xlsx": true,
+		".zip":  true,
+		".rar":  true,
+		".tar":  true,
+		".gz":   true,
+		".exe":  true,
+		".dll":  true,
+		".bin":  true,
+		".iso":  true,
+		".dat":  true,
+		".db":   true,
 	}
-
-	// Check if it's a binary extension but not a multimedia one
 	return binaryExtensions[ext] && !multimediaExtensions[ext]
 }

@@ -2,7 +2,6 @@ package hooks
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -20,29 +19,26 @@ func TestRawRequestBytes(t *testing.T) {
 		req     *http.Request
 		want    string
 		hasBody bool
-		wantErr bool
 	}{
 		{
 			name:    "Simple GET request",
 			req:     httptest.NewRequest("GET", "http://example.com/path", nil),
 			want:    "GET /path HTTP/1.1\r\nHost: example.com\r\n\r\n",
 			hasBody: false,
-			wantErr: false,
 		},
 		{
 			name:    "POST request with body",
 			req:     httptest.NewRequest("POST", "http://example.com/post", strings.NewReader("data")),
 			want:    "POST /post HTTP/1.1\r\nHost: example.com\r\n\r\ndata",
 			hasBody: true,
-			wantErr: false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := RawRequestBytes(tt.req)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("RawRequestBytes() error = %v, wantErr %v", err, tt.wantErr)
+			if err != nil {
+				t.Errorf("RawRequestBytes() error = %v", err)
 				return
 			}
 			if string(got) != tt.want {
@@ -64,7 +60,6 @@ func TestRawResponseBytes(t *testing.T) {
 		resp    *http.Response
 		want    string
 		hasBody bool
-		wantErr bool
 	}{
 		{
 			name: "Simple 200 OK response",
@@ -76,7 +71,6 @@ func TestRawResponseBytes(t *testing.T) {
 			},
 			want:    "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n",
 			hasBody: false,
-			wantErr: false,
 		},
 		{
 			name: "Response with body",
@@ -88,15 +82,14 @@ func TestRawResponseBytes(t *testing.T) {
 			},
 			want:    "HTTP/1.1 201 Created\r\nContent-Type: application/json\r\n\r\n{\"message\": \"created\"}",
 			hasBody: true,
-			wantErr: false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := RawResponseBytes(tt.resp)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("RawResponseBytes() error = %v, wantErr %v", err, tt.wantErr)
+			if err != nil {
+				t.Errorf("RawResponseBytes() error = %v", err)
 				return
 			}
 			if string(got) != tt.want {
@@ -113,160 +106,70 @@ func TestRawResponseBytes(t *testing.T) {
 }
 
 func TestLogRawRequest(t *testing.T) {
-	tests := []struct {
-		name    string
-		setup   func(*proxy.Proxy)
-		want    string
-		wantErr bool
-	}{
-		{
-			name: "Request with ID",
-			setup: func(p *proxy.Proxy) {
-				p.RequestInPipeline = append(p.RequestInPipeline, LogRawRequest)
-			},
-			want:    "---------- PROXY-VIBES REQUEST START: [UUID] ----------\r\nGET /path HTTP/1.1\r\nHost: [HOST]\r\n\r\n---------- PROXY-VIBES REQUEST END: [UUID] ----------\r\n",
-			wantErr: false,
-		},
-	}
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			p := proxy.NewProxy(nil, nil)
-			var capturedRequestID string
+	req := httptest.NewRequest("GET", "https://test.host.com/path", nil)
+	req = proxy.SetRequestID(req, "test-request-id")
+	LogRawRequest(req)
 
-			p.RequestInPipeline = append(p.RequestInPipeline, func(req *http.Request) error {
-				capturedRequestID = proxy.GetRequestID(req)
-				return nil
-			})
-			tt.setup(p)
+	w.Close()
+	os.Stdout = oldStdout
 
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				w.Write([]byte("Success"))
-			}))
-			defer server.Close()
+	var buf bytes.Buffer
+	io.Copy(&buf, r)
+	got := buf.String()
 
-			oldStdout := os.Stdout
-			r, w, _ := os.Pipe()
-			os.Stdout = w
+	want := "---------- PROXY-VIBES REQUEST START: test-request-id ----------\r\nGET /path HTTP/1.1\r\nHost: test.host.com\r\n\r\n---------- PROXY-VIBES REQUEST END: test-request-id ----------\r\n"
 
-			req := httptest.NewRequest("GET", server.URL+"/path", nil)
-			recorder := httptest.NewRecorder()
-			p.ServeHTTP(recorder, req)
-
-			w.Close()
-			os.Stdout = oldStdout
-
-			var buf bytes.Buffer
-			io.Copy(&buf, r)
-			got := buf.String()
-
-			if capturedRequestID == "" {
-				t.Errorf("Expected request ID to be set, got empty string")
-			}
-			host := req.URL.Host
-			expected := strings.ReplaceAll(tt.want, "[UUID]", capturedRequestID)
-			expected = strings.ReplaceAll(expected, "[HOST]", host)
-			if got != expected {
-				t.Errorf("LogRawRequest() output = %q, want %q", got, expected)
-			}
-		})
+	if got != want {
+		t.Errorf("LogRawRequest() output = %q, want %q", got, want)
 	}
 }
 
 func TestLogRawResponse(t *testing.T) {
-	tests := []struct {
-		name    string
-		setup   func(*proxy.Proxy)
-		wantErr bool
-	}{
-		{
-			name: "Response with ID",
-			setup: func(p *proxy.Proxy) {
-				p.ResponseInPipeline = append(p.ResponseInPipeline, LogRawResponse)
-			},
-			wantErr: false,
-		},
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	// Create a sample response
+	resp := &http.Response{
+		StatusCode: 200,
+		Proto:      "HTTP/1.1",
+		Header:     http.Header{"Content-Type": []string{"text/plain"}},
+		Body:       io.NopCloser(strings.NewReader("Success")),
 	}
+	resp.Request = httptest.NewRequest("GET", "https://test.host.com", nil)
+	resp.Request = proxy.SetRequestID(resp.Request, "test-response-id")
+	LogRawResponse(resp)
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			p := proxy.NewProxy(nil, nil)
-			var capturedResponseID string
+	w.Close()
+	os.Stdout = oldStdout
 
-			p.ResponseInPipeline = append(p.ResponseInPipeline, func(resp *http.Response) error {
-				capturedResponseID = proxy.GetResponseID(resp)
-				return nil
-			})
-			tt.setup(p)
+	var buf bytes.Buffer
+	io.Copy(&buf, r)
+	got := buf.String()
 
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				w.Header().Set("Content-Type", "text/plain")
-				w.Write([]byte("Success"))
-			}))
-			defer server.Close()
+	want := "---------- PROXY-VIBES RESPONSE START: test-response-id ----------\r\nHTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nSuccess---------- PROXY-VIBES RESPONSE END: test-response-id ----------\r\n"
 
-			oldStdout := os.Stdout
-			r, w, _ := os.Pipe()
-			os.Stdout = w
-
-			req := httptest.NewRequest("GET", server.URL, nil)
-			recorder := httptest.NewRecorder()
-			p.ServeHTTP(recorder, req)
-			resp := recorder.Result()
-
-			w.Close()
-			os.Stdout = oldStdout
-
-			if resp.StatusCode != http.StatusOK {
-				t.Errorf("Expected status 200, got %d", resp.StatusCode)
-			}
-
-			var buf bytes.Buffer
-			io.Copy(&buf, r)
-			got := buf.String()
-
-			if capturedResponseID == "" {
-				t.Errorf("Expected response ID to be set, got empty string")
-			}
-
-			expectedPrefix := fmt.Sprintf("---------- PROXY-VIBES RESPONSE START: %s ----------\r\n", capturedResponseID)
-			expectedSuffix := fmt.Sprintf("---------- PROXY-VIBES RESPONSE END: %s ----------\r\n", capturedResponseID)
-			expectedContains := []string{
-				"HTTP/1.1 200 OK\r\n",
-				"Content-Type: text/plain\r\n",
-				"Success",
-			}
-
-			if !strings.HasPrefix(got, expectedPrefix) {
-				t.Errorf("LogRawResponse() output prefix = %q, want %q", got[:len(expectedPrefix)], expectedPrefix)
-			}
-			if !strings.HasSuffix(got, expectedSuffix) {
-				t.Errorf("LogRawResponse() output suffix = %q, want %q", got[len(got)-len(expectedSuffix):], expectedSuffix)
-			}
-			for _, content := range expectedContains {
-				if !strings.Contains(got, content) {
-					t.Errorf("LogRawResponse() output missing %q, got %q", content, got)
-				}
-			}
-		})
+	if got != want {
+		t.Errorf("LogRawResponse() output = %q, want %q", got, want)
 	}
 }
 
 func TestSaveHooks(t *testing.T) {
 	tests := []struct {
-		name    string
-		dir     string
-		wantErr bool
+		name string
+		dir  string
 	}{
 		{
-			name:    "Default directory (empty)",
-			dir:     "",
-			wantErr: false,
+			name: "Default directory (empty)",
+			dir:  "",
 		},
 		{
-			name:    "Custom directory",
-			dir:     "test-dir",
-			wantErr: false,
+			name: "Custom directory",
+			dir:  "test-dir",
 		},
 	}
 
@@ -290,81 +193,49 @@ func TestSaveHooks(t *testing.T) {
 				}
 			}
 
-			p := proxy.NewProxy(nil, nil)
-			var capturedRequestID, capturedResponseID string
-
 			// Get save hooks
 			saveRequest, saveResponse := NewFileSaveHooks(saveDir)
 
-			// Capture IDs
-			p.RequestInPipeline = append(p.RequestInPipeline, func(req *http.Request) error {
-				capturedRequestID = proxy.GetRequestID(req)
-				return nil
-			}, saveRequest)
-			p.ResponseInPipeline = append(p.ResponseInPipeline, func(resp *http.Response) error {
-				capturedResponseID = proxy.GetResponseID(resp)
-				return nil
-			}, saveResponse)
+			// Create and save request
+			req := httptest.NewRequest("GET", "https://test.host.com/path", nil)
+			req = proxy.SetRequestID(req, "test-request-id")
+			if err := saveRequest(req); err != nil {
+				t.Errorf("saveRequest() error = %v", err)
+			}
 
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				w.Header().Set("Content-Type", "text/plain")
-				w.Write([]byte("Success"))
-			}))
-			defer server.Close()
-
-			req := httptest.NewRequest("GET", server.URL+"/path", nil)
-			recorder := httptest.NewRecorder()
-			p.ServeHTTP(recorder, req)
-			resp := recorder.Result()
+			// Create and save response
+			resp := &http.Response{
+				StatusCode: 200,
+				Proto:      "HTTP/1.1",
+				Header:     http.Header{"Content-Type": []string{"text/plain"}},
+				Body:       io.NopCloser(strings.NewReader("Success")),
+			}
+			resp.Request = httptest.NewRequest("GET", "https://test.host.com", nil)
+			resp.Request = proxy.SetRequestID(resp.Request, "test-response-id")
+			if err := saveResponse(resp); err != nil {
+				t.Errorf("saveResponse() error = %v", err)
+			}
 
 			// Check request file
-			reqFile := filepath.Join(saveDir, fmt.Sprintf("request-%s.txt", capturedRequestID))
+			reqFile := filepath.Join(saveDir, "request-test-request-id.txt")
 			reqContent, err := os.ReadFile(reqFile)
 			if err != nil {
 				t.Errorf("Failed to read request file %s: %v", reqFile, err)
 			}
-			expectedReq, _ := RawRequestBytes(req)
-			reqLines := strings.Split(string(reqContent), "\r\n")
-			expectedReqLines := strings.Split(string(expectedReq), "\r\n")
-			for _, expectedLine := range expectedReqLines {
-				if expectedLine == "" {
-					continue // Skip empty lines (e.g., between headers and body)
-				}
-				found := false
-				for _, line := range reqLines {
-					if line == expectedLine {
-						found = true
-						break
-					}
-				}
-				if !found {
-					t.Errorf("Request file %s missing line %q, got %q", reqFile, expectedLine, reqContent)
-				}
+			wantReq := "GET /path HTTP/1.1\r\nHost: test.host.com\r\n\r\n"
+			if string(reqContent) != wantReq {
+				t.Errorf("Request file content = %q, want %q", reqContent, wantReq)
 			}
 
 			// Check response file
-			respFile := filepath.Join(saveDir, fmt.Sprintf("response-%s.txt", capturedResponseID))
+			respFile := filepath.Join(saveDir, "response-test-response-id.txt")
 			respContent, err := os.ReadFile(respFile)
 			if err != nil {
 				t.Errorf("Failed to read response file %s: %v", respFile, err)
 			}
-			expectedResp, _ := RawResponseBytes(resp)
-			respLines := strings.Split(string(respContent), "\r\n")
-			expectedRespLines := strings.Split(string(expectedResp), "\r\n")
-			for _, expectedLine := range expectedRespLines {
-				if expectedLine == "" {
-					continue // Skip empty lines
-				}
-				found := false
-				for _, line := range respLines {
-					if line == expectedLine {
-						found = true
-						break
-					}
-				}
-				if !found {
-					t.Errorf("Response file %s missing line %q, got %q", respFile, expectedLine, respContent)
-				}
+			wantResp := "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nSuccess"
+			if string(respContent) != wantResp {
+				t.Errorf("Response file content = %q, want %q", respContent, wantResp)
 			}
 		})
 	}

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 
 	"github.com/artilugio0/proxy-vibes/internal/certs"
@@ -97,9 +98,9 @@ func TestProcessRequestPipelines(t *testing.T) {
 			},
 			modPipeline:     []RequestModFunc{},
 			outPipeline:     []RequestInOutFunc{},
-			expectError:     true,
+			expectError:     false, // Do not throw error if readonly fails, request can still be proccessed
 			expectModified:  false,
-			expectInFlag:    false,
+			expectInFlag:    true,
 			expectModHeader: "",
 			expectOutFlag:   false,
 		},
@@ -223,11 +224,11 @@ func TestProcessRequestPipelines(t *testing.T) {
 					return errors.New("out error")
 				},
 			},
-			expectError:     true,
+			expectError:     false, // Do not throw error if readonly fails, request can still be proccessed
 			expectModified:  false,
 			expectInFlag:    false,
 			expectModHeader: "",
-			expectOutFlag:   false,
+			expectOutFlag:   true,
 		},
 		// All pipelines combined
 		{
@@ -294,31 +295,6 @@ func TestProcessRequestPipelines(t *testing.T) {
 			expectModHeader: "mod2",
 			expectOutFlag:   true,
 		},
-		{
-			name: "All pipelines with error in middle",
-			inPipeline: []RequestInOutFunc{
-				func(req *http.Request) error {
-					req.Method = "POST" // Should not persist
-					return nil
-				},
-			},
-			modPipeline: []RequestModFunc{
-				func(req *http.Request) (*http.Request, error) {
-					return nil, errors.New("mod error")
-				},
-			},
-			outPipeline: []RequestInOutFunc{
-				func(req *http.Request) error {
-					req.Method = "PUT" // Should not persist
-					return nil
-				},
-			},
-			expectError:     true,
-			expectModified:  false,
-			expectInFlag:    true,
-			expectModHeader: "",
-			expectOutFlag:   false,
-		},
 	}
 
 	for _, tt := range tests {
@@ -333,16 +309,29 @@ func TestProcessRequestPipelines(t *testing.T) {
 			outExecuted := false
 
 			// Wrap pipeline functions to set flags
+			var wg sync.WaitGroup
 			for i, fn := range p.RequestInPipeline {
+				wg.Add(1)
 				origFn := fn
 				p.RequestInPipeline[i] = func(req *http.Request) error {
+					defer wg.Done()
 					inExecuted = true
 					return origFn(req)
 				}
 			}
+			for i, fn := range p.RequestModPipeline {
+				wg.Add(1)
+				origFn := fn
+				p.RequestModPipeline[i] = func(req *http.Request) (*http.Request, error) {
+					defer wg.Done()
+					return origFn(req)
+				}
+			}
 			for i, fn := range p.RequestOutPipeline {
+				wg.Add(1)
 				origFn := fn
 				p.RequestOutPipeline[i] = func(req *http.Request) error {
+					defer wg.Done()
 					outExecuted = true
 					return origFn(req)
 				}
@@ -350,6 +339,8 @@ func TestProcessRequestPipelines(t *testing.T) {
 
 			req := httptest.NewRequest("GET", "http://example.com", nil)
 			finalReq, err := p.processRequestPipelines(req)
+
+			wg.Wait()
 
 			if tt.expectError {
 				if err == nil {

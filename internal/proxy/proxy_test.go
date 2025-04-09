@@ -238,13 +238,17 @@ func TestServeHTTPWithID(t *testing.T) {
 	p := NewProxy(nil, rootKey)
 	var requestID, responseID string
 
+	var wg sync.WaitGroup
+	wg.Add(2)
 	// Hook to capture request ID
 	p.RequestInPipeline = append(p.RequestInPipeline, func(req *http.Request) error {
+		defer wg.Done()
 		requestID = GetRequestID(req)
 		return nil
 	})
 	// Hook to capture response ID
 	p.ResponseInPipeline = append(p.ResponseInPipeline, func(resp *http.Response) error {
+		defer wg.Done()
 		responseID = GetResponseID(resp)
 		return nil
 	})
@@ -262,6 +266,8 @@ func TestServeHTTPWithID(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	p.ServeHTTP(w, req)
+
+	wg.Wait()
 
 	resp := w.Result()
 	body, _ := io.ReadAll(resp.Body)

@@ -38,6 +38,14 @@ type requestIDKeyType struct{}
 
 var requestIDKey = requestIDKeyType{}
 
+// pipelineQueueItem represents an item in the pipeline processing queue
+type pipelineQueueItem struct {
+	isRequest bool
+	req       *http.Request
+	resp      *http.Response
+	pipeline  interface{} // Either []RequestInOutFunc or []ResponseInOutFunc
+}
+
 // Proxy struct holds the proxy configuration with pipelines and scope function
 type Proxy struct {
 	RequestInPipeline   []RequestInOutFunc  // First request pipeline: read-only
@@ -52,11 +60,12 @@ type Proxy struct {
 	CertMutex           sync.RWMutex
 	RootCA              *x509.Certificate
 	RootKey             *rsa.PrivateKey
+	pipelineQueue       chan pipelineQueueItem // Queue for asynchronous pipeline processing
 }
 
 // NewProxy creates a new proxy instance with empty pipelines and default in-scope function
 func NewProxy(rootCA *x509.Certificate, rootKey *rsa.PrivateKey) *Proxy {
-	return &Proxy{
+	p := &Proxy{
 		RequestInPipeline:   []RequestInOutFunc{},
 		RequestModPipeline:  []RequestModFunc{},
 		RequestOutPipeline:  []RequestInOutFunc{},
@@ -72,10 +81,99 @@ func NewProxy(rootCA *x509.Certificate, rootKey *rsa.PrivateKey) *Proxy {
 				},
 			},
 		},
-		CertCache: make(map[string]*tls.Certificate),
-		CertMutex: sync.RWMutex{},
-		RootCA:    rootCA,
-		RootKey:   rootKey,
+		CertCache:     make(map[string]*tls.Certificate),
+		CertMutex:     sync.RWMutex{},
+		RootCA:        rootCA,
+		RootKey:       rootKey,
+		pipelineQueue: make(chan pipelineQueueItem, 1000), // Buffered channel for queue
+	}
+
+	// Start a goroutine to process the pipeline queue
+	go p.processPipelineQueue()
+
+	return p
+}
+
+// processPipelineQueue runs in a goroutine to process items from the pipeline queue
+func (p *Proxy) processPipelineQueue() {
+	for item := range p.pipelineQueue {
+		if item.isRequest {
+			p.processRequestPipelineItem(item)
+		} else {
+			p.processResponsePipelineItem(item)
+		}
+	}
+}
+
+// processRequestPipelineItem processes a single request pipeline item asynchronously and concurrently
+func (p *Proxy) processRequestPipelineItem(item pipelineQueueItem) {
+	pipeline := item.pipeline.([]RequestInOutFunc)
+	req := item.req
+
+	if len(pipeline) == 0 {
+		return
+	}
+
+	var wg sync.WaitGroup
+	errChan := make(chan error, len(pipeline))
+
+	// Launch each pipeline function concurrently
+	for _, fn := range pipeline {
+		wg.Add(1)
+		go func(f RequestInOutFunc) {
+			defer wg.Done()
+			tempReq := cloneRequest(req)
+			if err := f(tempReq); err != nil {
+				errChan <- err
+			}
+		}(fn)
+	}
+
+	// Wait for all goroutines to complete
+	wg.Wait()
+	close(errChan)
+
+	// Log any errors that occurred
+	for err := range errChan {
+		if err != nil {
+			log.Printf("Error processing request pipeline for request ID %s: %v", GetRequestID(req), err)
+		}
+	}
+}
+
+// processResponsePipelineItem processes a single response pipeline item asynchronously and concurrently
+func (p *Proxy) processResponsePipelineItem(item pipelineQueueItem) {
+	pipeline := item.pipeline.([]ResponseInOutFunc)
+	resp := item.resp
+
+	if len(pipeline) == 0 {
+		return
+	}
+
+	var wg sync.WaitGroup
+	errChan := make(chan error, len(pipeline))
+
+	// Launch each pipeline function concurrently
+	for _, fn := range pipeline {
+		wg.Add(1)
+		go func(f ResponseInOutFunc) {
+			defer wg.Done()
+			tempResp := cloneResponse(resp)
+			if err := f(tempResp); err != nil {
+				errChan <- err
+			}
+		}(fn)
+	}
+
+	// Wait for all goroutines to complete
+	wg.Wait()
+	close(errChan)
+
+	// Log any errors that occurred
+	for err := range errChan {
+		if err != nil {
+			log.Printf("Error processing response pipeline for request ID %s: %v", GetResponseID(resp), err)
+		}
 	}
 }
 
@@ -266,33 +364,22 @@ func (p *Proxy) HandleConnect(w http.ResponseWriter, req *http.Request) {
 // processRequestPipelines processes the request through all three request pipelines
 func (p *Proxy) processRequestPipelines(req *http.Request) (*http.Request, error) {
 	currentReq := cloneRequest(req)
-	//currentReq.Header.Del("accept-encoding")
 
+	// Process RequestInPipeline asynchronously via queue
 	if len(p.RequestInPipeline) > 0 {
-		var wg sync.WaitGroup
-		errChan := make(chan error, len(p.RequestInPipeline))
-
-		for _, fn := range p.RequestInPipeline {
-			wg.Add(1)
-			go func(f RequestInOutFunc) {
-				defer wg.Done()
-				tempReq := cloneRequest(currentReq)
-				if err := f(tempReq); err != nil {
-					errChan <- err
-				}
-			}(fn)
-		}
-
-		wg.Wait()
-		close(errChan)
-
-		for err := range errChan {
-			if err != nil {
-				return nil, fmt.Errorf("RequestInPipeline error: %v", err)
-			}
+		select {
+		case p.pipelineQueue <- pipelineQueueItem{
+			isRequest: true,
+			req:       currentReq,
+			pipeline:  p.RequestInPipeline,
+		}:
+		// Successfully queued
+		default:
+			log.Printf("Pipeline queue full, skipping RequestInPipeline for request ID %s", GetRequestID(req))
 		}
 	}
 
+	// Process RequestModPipeline synchronously (read/write pipeline)
 	for _, fn := range p.RequestModPipeline {
 		modifiedReq, err := fn(currentReq)
 		if err != nil {
@@ -302,28 +389,17 @@ func (p *Proxy) processRequestPipelines(req *http.Request) (*http.Request, error
 		currentReq.Body.(*BodyWrapper).Reset()
 	}
 
+	// Process RequestOutPipeline asynchronously via queue
 	if len(p.RequestOutPipeline) > 0 {
-		var wg sync.WaitGroup
-		errChan := make(chan error, len(p.RequestOutPipeline))
-
-		for _, fn := range p.RequestOutPipeline {
-			wg.Add(1)
-			go func(f RequestInOutFunc) {
-				defer wg.Done()
-				tempReq := cloneRequest(currentReq)
-				if err := f(tempReq); err != nil {
-					errChan <- err
-				}
-			}(fn)
-		}
-
-		wg.Wait()
-		close(errChan)
-
-		for err := range errChan {
-			if err != nil {
-				return nil, fmt.Errorf("RequestOutPipeline error: %v", err)
-			}
+		select {
+		case p.pipelineQueue <- pipelineQueueItem{
+			isRequest: true,
+			req:       currentReq,
+			pipeline:  p.RequestOutPipeline,
+		}:
+		// Successfully queued
+		default:
+			log.Printf("Pipeline queue full, skipping RequestOutPipeline for request ID %s", GetRequestID(req))
 		}
 	}
 
@@ -334,31 +410,21 @@ func (p *Proxy) processRequestPipelines(req *http.Request) (*http.Request, error
 func (p *Proxy) processResponsePipelines(resp *http.Response) (*http.Response, error) {
 	currentResp := cloneResponse(resp)
 
+	// Process ResponseInPipeline asynchronously via queue
 	if len(p.ResponseInPipeline) > 0 {
-		var wg sync.WaitGroup
-		errChan := make(chan error, len(p.ResponseInPipeline))
-
-		for _, fn := range p.ResponseInPipeline {
-			wg.Add(1)
-			go func(f ResponseInOutFunc) {
-				defer wg.Done()
-				tempResp := cloneResponse(currentResp)
-				if err := f(tempResp); err != nil {
-					errChan <- err
-				}
-			}(fn)
-		}
-
-		wg.Wait()
-		close(errChan)
-
-		for err := range errChan {
-			if err != nil {
-				return nil, fmt.Errorf("ResponseInPipeline error: %v", err)
-			}
+		select {
+		case p.pipelineQueue <- pipelineQueueItem{
+			isRequest: false,
+			resp:      currentResp,
+			pipeline:  p.ResponseInPipeline,
+		}:
+		// Successfully queued
+		default:
+			return nil, fmt.Errorf("Pipeline queue full, skipping ResponseInPipeline for request ID %s", GetResponseID(resp))
 		}
 	}
 
+	// Process ResponseModPipeline synchronously (read/write pipeline)
 	for _, fn := range p.ResponseModPipeline {
 		modifiedResp, err := fn(currentResp)
 		if err != nil {
@@ -368,28 +434,17 @@ func (p *Proxy) processResponsePipelines(resp *http.Response) (*http.Response, e
 		currentResp.Body.(*BodyWrapper).Reset()
 	}
 
+	// Process ResponseOutPipeline asynchronously via queue
 	if len(p.ResponseOutPipeline) > 0 {
-		var wg sync.WaitGroup
-		errChan := make(chan error, len(p.ResponseOutPipeline))
-
-		for _, fn := range p.ResponseOutPipeline {
-			wg.Add(1)
-			go func(f ResponseInOutFunc) {
-				defer wg.Done()
-				tempResp := cloneResponse(currentResp)
-				if err := f(tempResp); err != nil {
-					errChan <- err
-				}
-			}(fn)
-		}
-
-		wg.Wait()
-		close(errChan)
-
-		for err := range errChan {
-			if err != nil {
-				return nil, fmt.Errorf("ResponseOutPipeline error: %v", err)
-			}
+		select {
+		case p.pipelineQueue <- pipelineQueueItem{
+			isRequest: false,
+			resp:      currentResp,
+			pipeline:  p.ResponseOutPipeline,
+		}:
+		// Successfully queued
+		default:
+			return nil, fmt.Errorf("Pipeline queue full, skipping ResponseOutPipeline for request ID %s", GetResponseID(resp))
 		}
 	}
 
@@ -520,12 +575,12 @@ func NewBodyWrapper(data []byte) *BodyWrapper {
 }
 
 // Read implements the io.Reader interface
-func (bw *BodyWrapper) Read(p []byte) (n int, err error) {
-	return bw.reader.Read(p)
+func (b *BodyWrapper) Read(p []byte) (n int, err error) {
+	return b.reader.Read(p)
 }
 
 // Close implements the io.Closer interface (no-op in this case)
-func (bw *BodyWrapper) Close() error {
+func (b *BodyWrapper) Close() error {
 	// Since we're using bytes.Reader, there's nothing to close,
 	// but we implement this for io.ReadCloser compatibility
 	return nil
@@ -533,14 +588,14 @@ func (bw *BodyWrapper) Close() error {
 
 // ShallowClone creates a new BodyWrapper instance with the same underlying
 // byte array and a fresh reader reset to the start
-func (bw *BodyWrapper) ShallowClone() *BodyWrapper {
+func (b *BodyWrapper) ShallowClone() *BodyWrapper {
 	return &BodyWrapper{
-		data:   bw.data,                  // Reference the same byte array (shallow copy)
-		reader: bytes.NewReader(bw.data), // New reader starting at position 0
+		data:   b.data,                  // Reference the same byte array (shallow copy)
+		reader: bytes.NewReader(b.data), // New reader starting at position 0
 	}
 }
 
 // Reset resets the reader's position to the beginning of the byte array
-func (bw *BodyWrapper) Reset() {
-	bw.reader.Seek(0, io.SeekStart)
+func (b *BodyWrapper) Reset() {
+	b.reader.Seek(0, io.SeekStart)
 }

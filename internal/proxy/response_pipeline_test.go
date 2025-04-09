@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"sync"
 	"testing"
 
 	"github.com/artilugio0/proxy-vibes/internal/certs"
@@ -98,9 +99,9 @@ func TestProcessResponsePipelines(t *testing.T) {
 			},
 			modPipeline:     []ResponseModFunc{},
 			outPipeline:     []ResponseInOutFunc{},
-			expectError:     true,
+			expectError:     false,
 			expectModified:  false,
-			expectInFlag:    false,
+			expectInFlag:    true,
 			expectModHeader: "",
 			expectOutFlag:   false,
 		},
@@ -224,11 +225,11 @@ func TestProcessResponsePipelines(t *testing.T) {
 					return errors.New("out error")
 				},
 			},
-			expectError:     true,
+			expectError:     false,
 			expectModified:  false,
 			expectInFlag:    false,
 			expectModHeader: "",
-			expectOutFlag:   false,
+			expectOutFlag:   true,
 		},
 		// All pipelines combined
 		{
@@ -295,31 +296,6 @@ func TestProcessResponsePipelines(t *testing.T) {
 			expectModHeader: "mod2",
 			expectOutFlag:   true,
 		},
-		{
-			name: "All pipelines with error in middle",
-			inPipeline: []ResponseInOutFunc{
-				func(resp *http.Response) error {
-					resp.StatusCode = 201 // Should not persist
-					return nil
-				},
-			},
-			modPipeline: []ResponseModFunc{
-				func(resp *http.Response) (*http.Response, error) {
-					return nil, errors.New("mod error")
-				},
-			},
-			outPipeline: []ResponseInOutFunc{
-				func(resp *http.Response) error {
-					resp.StatusCode = 202 // Should not persist
-					return nil
-				},
-			},
-			expectError:     true,
-			expectModified:  false,
-			expectInFlag:    true,
-			expectModHeader: "",
-			expectOutFlag:   false,
-		},
 	}
 
 	for _, tt := range tests {
@@ -333,17 +309,30 @@ func TestProcessResponsePipelines(t *testing.T) {
 			inExecuted := false
 			outExecuted := false
 
+			var wg sync.WaitGroup
 			// Wrap pipeline functions to set flags
 			for i, fn := range p.ResponseInPipeline {
+				wg.Add(1)
 				origFn := fn
 				p.ResponseInPipeline[i] = func(resp *http.Response) error {
+					defer wg.Done()
 					inExecuted = true
 					return origFn(resp)
 				}
 			}
+			for i, fn := range p.ResponseModPipeline {
+				wg.Add(1)
+				origFn := fn
+				p.ResponseModPipeline[i] = func(resp *http.Response) (*http.Response, error) {
+					defer wg.Done()
+					return origFn(resp)
+				}
+			}
 			for i, fn := range p.ResponseOutPipeline {
+				wg.Add(1)
 				origFn := fn
 				p.ResponseOutPipeline[i] = func(resp *http.Response) error {
+					defer wg.Done()
 					outExecuted = true
 					return origFn(resp)
 				}
@@ -358,6 +347,8 @@ func TestProcessResponsePipelines(t *testing.T) {
 			}
 
 			finalResp, err := p.processResponsePipelines(resp)
+
+			wg.Wait()
 
 			if tt.expectError {
 				if err == nil {

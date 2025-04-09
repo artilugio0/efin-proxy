@@ -245,11 +245,16 @@ func saveResponseToDB(db *sql.DB, resp *http.Response) error {
 			return fmt.Errorf("failed to begin transaction: %v", err)
 		}
 
+		contentLength := resp.ContentLength
+		if contentLength == -1 {
+			contentLength = int64(len(body))
+		}
+
 		// Insert response
 		_, err = tx.Exec(`
             INSERT INTO responses (request_id, status_code, body, content_length)
             VALUES (?, ?, ?, ?)
-        `, id, resp.StatusCode, string(body), resp.ContentLength)
+        `, id, resp.StatusCode, string(body), contentLength)
 		if err == nil {
 			// Insert headers
 			for name, values := range resp.Header {

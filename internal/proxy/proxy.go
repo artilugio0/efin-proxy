@@ -484,6 +484,11 @@ func GetRequestID(req *http.Request) string {
 	return "" // Return empty string if no ID found
 }
 
+func SetRequestID(req *http.Request, id string) *http.Request {
+	ctx := context.WithValue(req.Context(), requestIDKey, id)
+	return req.WithContext(ctx)
+}
+
 // GetResponseID retrieves the request ID from the response's request context
 func GetResponseID(resp *http.Response) string {
 	if resp.Request != nil {

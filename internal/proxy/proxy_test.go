@@ -241,16 +241,20 @@ func TestServeHTTPWithID(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(2)
 	// Hook to capture request ID
-	p.RequestInPipeline = append(p.RequestInPipeline, func(req *http.Request) error {
-		defer wg.Done()
-		requestID = GetRequestID(req)
-		return nil
+	p.RequestInPipeline = newReadOnlyPipeline([]ReadOnlyHook[*http.Request]{
+		func(req *http.Request) error {
+			defer wg.Done()
+			requestID = GetRequestID(req)
+			return nil
+		},
 	})
 	// Hook to capture response ID
-	p.ResponseInPipeline = append(p.ResponseInPipeline, func(resp *http.Response) error {
-		defer wg.Done()
-		responseID = GetResponseID(resp)
-		return nil
+	p.ResponseInPipeline = newReadOnlyPipeline([]ReadOnlyHook[*http.Response]{
+		func(resp *http.Response) error {
+			defer wg.Done()
+			responseID = GetResponseID(resp)
+			return nil
+		},
 	})
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -305,13 +309,15 @@ func TestServeHTTPDifferentIDs(t *testing.T) {
 	ids := make([]string, 2)
 
 	// Hook to capture request IDs
-	p.RequestInPipeline = append(p.RequestInPipeline, func(req *http.Request) error {
-		if len(ids[0]) == 0 {
-			ids[0] = GetRequestID(req)
-		} else {
-			ids[1] = GetRequestID(req)
-		}
-		return nil
+	p.RequestInPipeline = newReadOnlyPipeline([]ReadOnlyHook[*http.Request]{
+		func(req *http.Request) error {
+			if len(ids[0]) == 0 {
+				ids[0] = GetRequestID(req)
+			} else {
+				ids[1] = GetRequestID(req)
+			}
+			return nil
+		},
 	})
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -374,14 +380,18 @@ func TestHandleConnectWithID(t *testing.T) {
 	var requestID, responseID string
 
 	// Hook to capture request ID
-	p.RequestInPipeline = append(p.RequestInPipeline, func(req *http.Request) error {
-		requestID = GetRequestID(req)
-		return nil
+	p.RequestInPipeline = newReadOnlyPipeline([]ReadOnlyHook[*http.Request]{
+		func(req *http.Request) error {
+			requestID = GetRequestID(req)
+			return nil
+		},
 	})
 	// Hook to capture response ID
-	p.ResponseInPipeline = append(p.ResponseInPipeline, func(resp *http.Response) error {
-		responseID = GetResponseID(resp)
-		return nil
+	p.ResponseInPipeline = newReadOnlyPipeline([]ReadOnlyHook[*http.Response]{
+		func(resp *http.Response) error {
+			responseID = GetResponseID(resp)
+			return nil
+		},
 	})
 
 	serverCert, err := certs.GenerateCert([]string{"localhost", "127.0.0.1"}, rootCA, rootKey)
@@ -465,14 +475,17 @@ func TestHandleConnectDifferentIDs(t *testing.T) {
 	requestCount := 0
 
 	// Hook to capture request IDs
-	p.RequestInPipeline = append(p.RequestInPipeline, func(req *http.Request) error {
-		mu.Lock()
-		defer mu.Unlock()
-		if requestCount < 2 {
-			ids[requestCount] = GetRequestID(req)
-			requestCount++
-		}
-		return nil
+
+	p.RequestInPipeline = newReadOnlyPipeline([]ReadOnlyHook[*http.Request]{
+		func(req *http.Request) error {
+			mu.Lock()
+			defer mu.Unlock()
+			if requestCount < 2 {
+				ids[requestCount] = GetRequestID(req)
+				requestCount++
+			}
+			return nil
+		},
 	})
 
 	serverCert, err := certs.GenerateCert([]string{"localhost", "127.0.0.1"}, rootCA, rootKey)

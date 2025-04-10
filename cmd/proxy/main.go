@@ -81,10 +81,15 @@ func main() {
 
 	p := proxy.NewProxy(rootCA, rootKey)
 
+	requestInHooks := []proxy.ReadOnlyHook[*http.Request]{}
+	requestOutHooks := []proxy.ReadOnlyHook[*http.Request]{}
+	responseInHooks := []proxy.ReadOnlyHook[*http.Response]{}
+	responseOutHooks := []proxy.ReadOnlyHook[*http.Response]{}
+
 	// Add logging hooks only if -p is set
 	if *printLogs {
-		p.RequestOutPipeline = append(p.RequestOutPipeline, hooks.LogRawRequest)
-		p.ResponseInPipeline = append(p.ResponseInPipeline, hooks.LogRawResponse)
+		requestOutHooks = append(requestOutHooks, hooks.LogRawRequest)
+		responseInHooks = append(responseInHooks, hooks.LogRawResponse)
 		log.Printf("Enabled raw request/response logging to stdout")
 	}
 
@@ -97,19 +102,24 @@ func main() {
 	// Add database save hooks only if database is initialized (-D or -db-file)
 	if db != nil {
 		saveRequest, saveResponse := hooks.NewDBSaveHooks(db)
-		p.RequestOutPipeline = append(p.RequestOutPipeline, saveRequest)
-		p.ResponseInPipeline = append(p.ResponseInPipeline, saveResponse)
+		requestOutHooks = append(requestOutHooks, saveRequest)
+		responseInHooks = append(responseInHooks, saveResponse)
 		log.Printf("Saving requests and responses to database at %s", dbPath)
 	}
 
 	// Add file save hooks if directory is specified (-d)
 	if *saveDir != "" {
 		saveRequest, saveResponse := hooks.NewFileSaveHooks(*saveDir)
-		p.RequestOutPipeline = append(p.RequestOutPipeline, saveRequest)
-		p.ResponseInPipeline = append(p.ResponseInPipeline, saveResponse)
+		requestOutHooks = append(requestOutHooks, saveRequest)
+		responseInHooks = append(responseInHooks, saveResponse)
 		log.Printf("Saving requests and responses to directory: %s", *saveDir)
 	}
 	p.InScopeFunc = IsInScope
+
+	p.SetRequestInHooks(requestInHooks)
+	p.SetRequestOutHooks(requestOutHooks)
+	p.SetResponseInHooks(responseInHooks)
+	p.SetResponseOutHooks(responseOutHooks)
 
 	server := &http.Server{
 		Addr: ":8080",

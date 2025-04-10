@@ -104,7 +104,7 @@ func LogRawResponse(resp *http.Response) error {
 }
 
 // NewFileSaveHooks returns request and response hooks that save to files in the specified directory
-func NewFileSaveHooks(dir string) (proxy.RequestReadOnlyHook, proxy.ResponseReadOnlyHook) {
+func NewFileSaveHooks(dir string) (proxy.ReadOnlyHook[*http.Request], proxy.ReadOnlyHook[*http.Response]) {
 	if dir == "" {
 		dir = "." // Default to current directory
 	}

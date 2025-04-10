@@ -48,13 +48,13 @@ type pipelineQueueItem struct {
 
 // Proxy struct holds the proxy configuration with pipelines and scope function
 type Proxy struct {
-	RequestInPipeline   []RequestReadOnlyHook  // First request pipeline: read-only
-	RequestModPipeline  []RequestModHook       // Second request pipeline: read/write
-	RequestOutPipeline  []RequestReadOnlyHook  // Third request pipeline: read-only
-	ResponseInPipeline  []ResponseReadOnlyHook // First response pipeline: read-only
-	ResponseModPipeline []ResponseModHook      // Second response pipeline: read/write
-	ResponseOutPipeline []ResponseReadOnlyHook // Third response pipeline: read-only
-	InScopeFunc         InScopeFunc            // Function to determine request scope
+	RequestInPipeline   *readOnlyPipeline[*http.Request]  // First request pipeline: read-only
+	RequestModPipeline  []RequestModHook                  // Second request pipeline: read/write
+	RequestOutPipeline  *readOnlyPipeline[*http.Request]  // Third request pipeline: read-only
+	ResponseInPipeline  *readOnlyPipeline[*http.Response] // First response pipeline: read-only
+	ResponseModPipeline []ResponseModHook                 // Second response pipeline: read/write
+	ResponseOutPipeline *readOnlyPipeline[*http.Response] // Third response pipeline: read-only
+	InScopeFunc         InScopeFunc                       // Function to determine request scope
 	Client              *http.Client
 	CertCache           map[string]*tls.Certificate
 	CertMutex           sync.RWMutex
@@ -66,12 +66,12 @@ type Proxy struct {
 // NewProxy creates a new proxy instance with empty pipelines and default in-scope function
 func NewProxy(rootCA *x509.Certificate, rootKey *rsa.PrivateKey) *Proxy {
 	p := &Proxy{
-		RequestInPipeline:   []RequestReadOnlyHook{},
+		RequestInPipeline:   newReadOnlyPipeline[*http.Request](nil),
 		RequestModPipeline:  []RequestModHook{},
-		RequestOutPipeline:  []RequestReadOnlyHook{},
-		ResponseInPipeline:  []ResponseReadOnlyHook{},
+		RequestOutPipeline:  newReadOnlyPipeline[*http.Request](nil),
+		ResponseInPipeline:  newReadOnlyPipeline[*http.Response](nil),
 		ResponseModPipeline: []ResponseModHook{},
-		ResponseOutPipeline: []ResponseReadOnlyHook{},
+		ResponseOutPipeline: newReadOnlyPipeline[*http.Response](nil),
 		InScopeFunc:         func(*http.Request) bool { return true }, // Default: all requests in scope
 		Client: &http.Client{
 			Transport: &http.Transport{
@@ -365,19 +365,7 @@ func (p *Proxy) HandleConnect(w http.ResponseWriter, req *http.Request) {
 func (p *Proxy) processRequestPipelines(req *http.Request) (*http.Request, error) {
 	currentReq := cloneRequest(req)
 
-	// Process RequestInPipeline asynchronously via queue
-	if len(p.RequestInPipeline) > 0 {
-		select {
-		case p.pipelineQueue <- pipelineQueueItem{
-			isRequest: true,
-			req:       currentReq,
-			pipeline:  p.RequestInPipeline,
-		}:
-		// Successfully queued
-		default:
-			log.Printf("Pipeline queue full, skipping RequestInPipeline for request ID %s", GetRequestID(req))
-		}
-	}
+	p.RequestInPipeline.runPipeline(currentReq)
 
 	// Process RequestModPipeline synchronously (read/write pipeline)
 	for _, fn := range p.RequestModPipeline {
@@ -389,19 +377,7 @@ func (p *Proxy) processRequestPipelines(req *http.Request) (*http.Request, error
 		currentReq.Body.(*BodyWrapper).Reset()
 	}
 
-	// Process RequestOutPipeline asynchronously via queue
-	if len(p.RequestOutPipeline) > 0 {
-		select {
-		case p.pipelineQueue <- pipelineQueueItem{
-			isRequest: true,
-			req:       currentReq,
-			pipeline:  p.RequestOutPipeline,
-		}:
-		// Successfully queued
-		default:
-			log.Printf("Pipeline queue full, skipping RequestOutPipeline for request ID %s", GetRequestID(req))
-		}
-	}
+	p.RequestOutPipeline.runPipeline(currentReq)
 
 	return currentReq, nil
 }
@@ -410,19 +386,7 @@ func (p *Proxy) processRequestPipelines(req *http.Request) (*http.Request, error
 func (p *Proxy) processResponsePipelines(resp *http.Response) (*http.Response, error) {
 	currentResp := cloneResponse(resp)
 
-	// Process ResponseInPipeline asynchronously via queue
-	if len(p.ResponseInPipeline) > 0 {
-		select {
-		case p.pipelineQueue <- pipelineQueueItem{
-			isRequest: false,
-			resp:      currentResp,
-			pipeline:  p.ResponseInPipeline,
-		}:
-		// Successfully queued
-		default:
-			return nil, fmt.Errorf("Pipeline queue full, skipping ResponseInPipeline for request ID %s", GetResponseID(resp))
-		}
-	}
+	p.ResponseInPipeline.runPipeline(currentResp)
 
 	// Process ResponseModPipeline synchronously (read/write pipeline)
 	for _, fn := range p.ResponseModPipeline {
@@ -434,21 +398,25 @@ func (p *Proxy) processResponsePipelines(resp *http.Response) (*http.Response, e
 		currentResp.Body.(*BodyWrapper).Reset()
 	}
 
-	// Process ResponseOutPipeline asynchronously via queue
-	if len(p.ResponseOutPipeline) > 0 {
-		select {
-		case p.pipelineQueue <- pipelineQueueItem{
-			isRequest: false,
-			resp:      currentResp,
-			pipeline:  p.ResponseOutPipeline,
-		}:
-		// Successfully queued
-		default:
-			return nil, fmt.Errorf("Pipeline queue full, skipping ResponseOutPipeline for request ID %s", GetResponseID(resp))
-		}
-	}
+	p.ResponseOutPipeline.runPipeline(currentResp)
 
 	return currentResp, nil
+}
+
+func (p *Proxy) SetRequestInHooks(hooks []ReadOnlyHook[*http.Request]) {
+	p.RequestInPipeline.setHooks(hooks)
+}
+
+func (p *Proxy) SetRequestOutHooks(hooks []ReadOnlyHook[*http.Request]) {
+	p.RequestOutPipeline.setHooks(hooks)
+}
+
+func (p *Proxy) SetResponseInHooks(hooks []ReadOnlyHook[*http.Response]) {
+	p.ResponseInPipeline.setHooks(hooks)
+}
+
+func (p *Proxy) SetResponseOutHooks(hooks []ReadOnlyHook[*http.Response]) {
+	p.ResponseOutPipeline.setHooks(hooks)
 }
 
 // cloneRequest creates a deep copy of an HTTP request

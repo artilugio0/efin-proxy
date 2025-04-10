@@ -20,9 +20,9 @@ func TestProcessRequestPipelines(t *testing.T) {
 
 	tests := []struct {
 		name            string
-		inPipeline      []RequestReadOnlyHook
+		inPipeline      []ReadOnlyHook[*http.Request]
 		modPipeline     []RequestModHook
-		outPipeline     []RequestReadOnlyHook
+		outPipeline     []ReadOnlyHook[*http.Request]
 		expectError     bool
 		expectModified  bool
 		expectInFlag    bool
@@ -32,9 +32,9 @@ func TestProcessRequestPipelines(t *testing.T) {
 		// Empty pipelines
 		{
 			name:            "All pipelines empty",
-			inPipeline:      []RequestReadOnlyHook{},
+			inPipeline:      []ReadOnlyHook[*http.Request]{},
 			modPipeline:     []RequestModHook{},
-			outPipeline:     []RequestReadOnlyHook{},
+			outPipeline:     []ReadOnlyHook[*http.Request]{},
 			expectError:     false,
 			expectModified:  false,
 			expectInFlag:    false,
@@ -44,9 +44,9 @@ func TestProcessRequestPipelines(t *testing.T) {
 		// RequestInPipeline only
 		{
 			name:            "RequestInPipeline with 0 functions",
-			inPipeline:      []RequestReadOnlyHook{},
+			inPipeline:      []ReadOnlyHook[*http.Request]{},
 			modPipeline:     []RequestModHook{},
-			outPipeline:     []RequestReadOnlyHook{},
+			outPipeline:     []ReadOnlyHook[*http.Request]{},
 			expectError:     false,
 			expectModified:  false,
 			expectInFlag:    false,
@@ -55,14 +55,14 @@ func TestProcessRequestPipelines(t *testing.T) {
 		},
 		{
 			name: "RequestInPipeline with 1 function",
-			inPipeline: []RequestReadOnlyHook{
+			inPipeline: []ReadOnlyHook[*http.Request]{
 				func(req *http.Request) error {
 					req.Method = "POST" // This should not persist due to cloning
 					return nil
 				},
 			},
 			modPipeline:     []RequestModHook{},
-			outPipeline:     []RequestReadOnlyHook{},
+			outPipeline:     []ReadOnlyHook[*http.Request]{},
 			expectError:     false,
 			expectModified:  false,
 			expectInFlag:    true,
@@ -71,7 +71,7 @@ func TestProcessRequestPipelines(t *testing.T) {
 		},
 		{
 			name: "RequestInPipeline with 2 functions",
-			inPipeline: []RequestReadOnlyHook{
+			inPipeline: []ReadOnlyHook[*http.Request]{
 				func(req *http.Request) error {
 					req.Method = "POST" // Should not persist
 					return nil
@@ -82,7 +82,7 @@ func TestProcessRequestPipelines(t *testing.T) {
 				},
 			},
 			modPipeline:     []RequestModHook{},
-			outPipeline:     []RequestReadOnlyHook{},
+			outPipeline:     []ReadOnlyHook[*http.Request]{},
 			expectError:     false,
 			expectModified:  false,
 			expectInFlag:    true,
@@ -91,13 +91,13 @@ func TestProcessRequestPipelines(t *testing.T) {
 		},
 		{
 			name: "RequestInPipeline with error",
-			inPipeline: []RequestReadOnlyHook{
+			inPipeline: []ReadOnlyHook[*http.Request]{
 				func(req *http.Request) error {
 					return errors.New("in error")
 				},
 			},
 			modPipeline:     []RequestModHook{},
-			outPipeline:     []RequestReadOnlyHook{},
+			outPipeline:     []ReadOnlyHook[*http.Request]{},
 			expectError:     false, // Do not throw error if readonly fails, request can still be proccessed
 			expectModified:  false,
 			expectInFlag:    true,
@@ -107,9 +107,9 @@ func TestProcessRequestPipelines(t *testing.T) {
 		// RequestModPipeline only
 		{
 			name:            "RequestModPipeline with 0 functions",
-			inPipeline:      []RequestReadOnlyHook{},
+			inPipeline:      []ReadOnlyHook[*http.Request]{},
 			modPipeline:     []RequestModHook{},
-			outPipeline:     []RequestReadOnlyHook{},
+			outPipeline:     []ReadOnlyHook[*http.Request]{},
 			expectError:     false,
 			expectModified:  false,
 			expectInFlag:    false,
@@ -118,14 +118,14 @@ func TestProcessRequestPipelines(t *testing.T) {
 		},
 		{
 			name:       "RequestModPipeline with 1 function",
-			inPipeline: []RequestReadOnlyHook{},
+			inPipeline: []ReadOnlyHook[*http.Request]{},
 			modPipeline: []RequestModHook{
 				func(req *http.Request) (*http.Request, error) {
 					req.Header.Set("X-Mod", "mod1")
 					return req, nil
 				},
 			},
-			outPipeline:     []RequestReadOnlyHook{},
+			outPipeline:     []ReadOnlyHook[*http.Request]{},
 			expectError:     false,
 			expectModified:  true,
 			expectInFlag:    false,
@@ -134,7 +134,7 @@ func TestProcessRequestPipelines(t *testing.T) {
 		},
 		{
 			name:       "RequestModPipeline with 2 functions",
-			inPipeline: []RequestReadOnlyHook{},
+			inPipeline: []ReadOnlyHook[*http.Request]{},
 			modPipeline: []RequestModHook{
 				func(req *http.Request) (*http.Request, error) {
 					req.Header.Set("X-Mod", "mod1")
@@ -145,7 +145,7 @@ func TestProcessRequestPipelines(t *testing.T) {
 					return req, nil
 				},
 			},
-			outPipeline:     []RequestReadOnlyHook{},
+			outPipeline:     []ReadOnlyHook[*http.Request]{},
 			expectError:     false,
 			expectModified:  true,
 			expectInFlag:    false,
@@ -154,13 +154,13 @@ func TestProcessRequestPipelines(t *testing.T) {
 		},
 		{
 			name:       "RequestModPipeline with error",
-			inPipeline: []RequestReadOnlyHook{},
+			inPipeline: []ReadOnlyHook[*http.Request]{},
 			modPipeline: []RequestModHook{
 				func(req *http.Request) (*http.Request, error) {
 					return nil, errors.New("mod error")
 				},
 			},
-			outPipeline:     []RequestReadOnlyHook{},
+			outPipeline:     []ReadOnlyHook[*http.Request]{},
 			expectError:     true,
 			expectModified:  false,
 			expectInFlag:    false,
@@ -170,9 +170,9 @@ func TestProcessRequestPipelines(t *testing.T) {
 		// RequestOutPipeline only
 		{
 			name:            "RequestOutPipeline with 0 functions",
-			inPipeline:      []RequestReadOnlyHook{},
+			inPipeline:      []ReadOnlyHook[*http.Request]{},
 			modPipeline:     []RequestModHook{},
-			outPipeline:     []RequestReadOnlyHook{},
+			outPipeline:     []ReadOnlyHook[*http.Request]{},
 			expectError:     false,
 			expectModified:  false,
 			expectInFlag:    false,
@@ -181,9 +181,9 @@ func TestProcessRequestPipelines(t *testing.T) {
 		},
 		{
 			name:        "RequestOutPipeline with 1 function",
-			inPipeline:  []RequestReadOnlyHook{},
+			inPipeline:  []ReadOnlyHook[*http.Request]{},
 			modPipeline: []RequestModHook{},
-			outPipeline: []RequestReadOnlyHook{
+			outPipeline: []ReadOnlyHook[*http.Request]{
 				func(req *http.Request) error {
 					req.Header.Set("X-Out", "out1") // Should not persist
 					return nil
@@ -197,9 +197,9 @@ func TestProcessRequestPipelines(t *testing.T) {
 		},
 		{
 			name:        "RequestOutPipeline with 2 functions",
-			inPipeline:  []RequestReadOnlyHook{},
+			inPipeline:  []ReadOnlyHook[*http.Request]{},
 			modPipeline: []RequestModHook{},
-			outPipeline: []RequestReadOnlyHook{
+			outPipeline: []ReadOnlyHook[*http.Request]{
 				func(req *http.Request) error {
 					req.Header.Set("X-Out", "out1") // Should not persist
 					return nil
@@ -217,9 +217,9 @@ func TestProcessRequestPipelines(t *testing.T) {
 		},
 		{
 			name:        "RequestOutPipeline with error",
-			inPipeline:  []RequestReadOnlyHook{},
+			inPipeline:  []ReadOnlyHook[*http.Request]{},
 			modPipeline: []RequestModHook{},
-			outPipeline: []RequestReadOnlyHook{
+			outPipeline: []ReadOnlyHook[*http.Request]{
 				func(req *http.Request) error {
 					return errors.New("out error")
 				},
@@ -233,7 +233,7 @@ func TestProcessRequestPipelines(t *testing.T) {
 		// All pipelines combined
 		{
 			name: "All pipelines with 1 function each",
-			inPipeline: []RequestReadOnlyHook{
+			inPipeline: []ReadOnlyHook[*http.Request]{
 				func(req *http.Request) error {
 					req.Method = "POST" // Should not persist
 					return nil
@@ -245,7 +245,7 @@ func TestProcessRequestPipelines(t *testing.T) {
 					return req, nil
 				},
 			},
-			outPipeline: []RequestReadOnlyHook{
+			outPipeline: []ReadOnlyHook[*http.Request]{
 				func(req *http.Request) error {
 					req.Method = "PUT" // Should not persist
 					return nil
@@ -259,7 +259,7 @@ func TestProcessRequestPipelines(t *testing.T) {
 		},
 		{
 			name: "All pipelines with multiple functions",
-			inPipeline: []RequestReadOnlyHook{
+			inPipeline: []ReadOnlyHook[*http.Request]{
 				func(req *http.Request) error {
 					req.Method = "POST" // Should not persist
 					return nil
@@ -279,7 +279,7 @@ func TestProcessRequestPipelines(t *testing.T) {
 					return req, nil
 				},
 			},
-			outPipeline: []RequestReadOnlyHook{
+			outPipeline: []ReadOnlyHook[*http.Request]{
 				func(req *http.Request) error {
 					req.Method = "DELETE" // Should not persist
 					return nil
@@ -300,9 +300,7 @@ func TestProcessRequestPipelines(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			p := NewProxy(rootCA, rootKey)
-			p.RequestInPipeline = tt.inPipeline
 			p.RequestModPipeline = tt.modPipeline
-			p.RequestOutPipeline = tt.outPipeline
 
 			// Flags to track pipeline execution
 			inExecuted := false
@@ -310,10 +308,10 @@ func TestProcessRequestPipelines(t *testing.T) {
 
 			// Wrap pipeline functions to set flags
 			var wg sync.WaitGroup
-			for i, fn := range p.RequestInPipeline {
+			for i, fn := range tt.inPipeline {
 				wg.Add(1)
 				origFn := fn
-				p.RequestInPipeline[i] = func(req *http.Request) error {
+				tt.inPipeline[i] = func(req *http.Request) error {
 					defer wg.Done()
 					inExecuted = true
 					return origFn(req)
@@ -327,15 +325,18 @@ func TestProcessRequestPipelines(t *testing.T) {
 					return origFn(req)
 				}
 			}
-			for i, fn := range p.RequestOutPipeline {
+			for i, fn := range tt.outPipeline {
 				wg.Add(1)
 				origFn := fn
-				p.RequestOutPipeline[i] = func(req *http.Request) error {
+				tt.outPipeline[i] = func(req *http.Request) error {
 					defer wg.Done()
 					outExecuted = true
 					return origFn(req)
 				}
 			}
+
+			p.RequestInPipeline = newReadOnlyPipeline(tt.inPipeline)
+			p.RequestOutPipeline = newReadOnlyPipeline(tt.outPipeline)
 
 			req := httptest.NewRequest("GET", "http://example.com", nil)
 			finalReq, err := p.processRequestPipelines(req)

@@ -49,37 +49,37 @@ func TestScopeServeHTTP(t *testing.T) {
 			inExecuted := false
 			outExecuted := false
 
-			p.RequestInPipeline = []RequestInOutFunc{
+			p.RequestInPipeline = []RequestReadOnlyHook{
 				func(req *http.Request) error {
 					inExecuted = true
 					return nil
 				},
 			}
-			p.RequestModPipeline = []RequestModFunc{
+			p.RequestModPipeline = []RequestModHook{
 				func(req *http.Request) (*http.Request, error) {
 					req.Header.Set("X-Mod", "mod1")
 					return req, nil
 				},
 			}
-			p.RequestOutPipeline = []RequestInOutFunc{
+			p.RequestOutPipeline = []RequestReadOnlyHook{
 				func(req *http.Request) error {
 					outExecuted = true
 					return nil
 				},
 			}
-			p.ResponseInPipeline = []ResponseInOutFunc{
+			p.ResponseInPipeline = []ResponseReadOnlyHook{
 				func(resp *http.Response) error {
 					inExecuted = true
 					return nil
 				},
 			}
-			p.ResponseModPipeline = []ResponseModFunc{
+			p.ResponseModPipeline = []ResponseModHook{
 				func(resp *http.Response) (*http.Response, error) {
 					resp.Header.Set("X-Mod", "mod1")
 					return resp, nil
 				},
 			}
-			p.ResponseOutPipeline = []ResponseInOutFunc{
+			p.ResponseOutPipeline = []ResponseReadOnlyHook{
 				func(resp *http.Response) error {
 					outExecuted = true
 					return nil
@@ -172,37 +172,37 @@ func TestScopeHandleConnect(t *testing.T) {
 			inExecuted := false
 			outExecuted := false
 
-			p.RequestInPipeline = []RequestInOutFunc{
+			p.RequestInPipeline = []RequestReadOnlyHook{
 				func(req *http.Request) error {
 					inExecuted = true
 					return nil
 				},
 			}
-			p.RequestModPipeline = []RequestModFunc{
+			p.RequestModPipeline = []RequestModHook{
 				func(req *http.Request) (*http.Request, error) {
 					req.Header.Set("X-Mod", "mod1")
 					return req, nil
 				},
 			}
-			p.RequestOutPipeline = []RequestInOutFunc{
+			p.RequestOutPipeline = []RequestReadOnlyHook{
 				func(req *http.Request) error {
 					outExecuted = true
 					return nil
 				},
 			}
-			p.ResponseInPipeline = []ResponseInOutFunc{
+			p.ResponseInPipeline = []ResponseReadOnlyHook{
 				func(resp *http.Response) error {
 					inExecuted = true
 					return nil
 				},
 			}
-			p.ResponseModPipeline = []ResponseModFunc{
+			p.ResponseModPipeline = []ResponseModHook{
 				func(resp *http.Response) (*http.Response, error) {
 					resp.Header.Set("X-Mod", "mod1")
 					return resp, nil
 				},
 			}
-			p.ResponseOutPipeline = []ResponseInOutFunc{
+			p.ResponseOutPipeline = []ResponseReadOnlyHook{
 				func(resp *http.Response) error {
 					outExecuted = true
 					return nil

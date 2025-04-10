@@ -70,7 +70,7 @@ type dbQueueItem struct {
 }
 
 // NewDBSaveHooks returns request and response hooks that send data to a queue for asynchronous processing
-func NewDBSaveHooks(db *sql.DB) (proxy.RequestInOutFunc, proxy.ResponseInOutFunc) {
+func NewDBSaveHooks(db *sql.DB) (proxy.RequestReadOnlyHook, proxy.ResponseReadOnlyHook) {
 	// Buffered channel to act as a queue (adjust size based on expected load)
 	queue := make(chan dbQueueItem, 1000)
 

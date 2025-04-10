@@ -19,17 +19,17 @@ import (
 	"github.com/google/uuid"
 )
 
-// RequestInOutFunc defines the signature for read-only request pipeline functions
-type RequestInOutFunc func(*http.Request) error
+// RequestReadOnlyHook defines the signature for read-only request pipeline functions
+type RequestReadOnlyHook func(*http.Request) error
 
-// RequestModFunc defines the signature for read/write request pipeline functions
-type RequestModFunc func(*http.Request) (*http.Request, error)
+// RequestModHook defines the signature for read/write request pipeline functions
+type RequestModHook func(*http.Request) (*http.Request, error)
 
-// ResponseInOutFunc defines the signature for read-only response pipeline functions
-type ResponseInOutFunc func(*http.Response) error
+// ResponseReadOnlyHook defines the signature for read-only response pipeline functions
+type ResponseReadOnlyHook func(*http.Response) error
 
-// ResponseModFunc defines the signature for read/write response pipeline functions
-type ResponseModFunc func(*http.Response) (*http.Response, error)
+// ResponseModHook defines the signature for read/write response pipeline functions
+type ResponseModHook func(*http.Response) (*http.Response, error)
 
 // InScopeFunc defines the signature for determining if a request is in scope
 type InScopeFunc func(*http.Request) bool
@@ -43,18 +43,18 @@ type pipelineQueueItem struct {
 	isRequest bool
 	req       *http.Request
 	resp      *http.Response
-	pipeline  interface{} // Either []RequestInOutFunc or []ResponseInOutFunc
+	pipeline  interface{} // Either []RequestReadOnlyHook or []ResponseReadOnlyHook
 }
 
 // Proxy struct holds the proxy configuration with pipelines and scope function
 type Proxy struct {
-	RequestInPipeline   []RequestInOutFunc  // First request pipeline: read-only
-	RequestModPipeline  []RequestModFunc    // Second request pipeline: read/write
-	RequestOutPipeline  []RequestInOutFunc  // Third request pipeline: read-only
-	ResponseInPipeline  []ResponseInOutFunc // First response pipeline: read-only
-	ResponseModPipeline []ResponseModFunc   // Second response pipeline: read/write
-	ResponseOutPipeline []ResponseInOutFunc // Third response pipeline: read-only
-	InScopeFunc         InScopeFunc         // Function to determine request scope
+	RequestInPipeline   []RequestReadOnlyHook  // First request pipeline: read-only
+	RequestModPipeline  []RequestModHook       // Second request pipeline: read/write
+	RequestOutPipeline  []RequestReadOnlyHook  // Third request pipeline: read-only
+	ResponseInPipeline  []ResponseReadOnlyHook // First response pipeline: read-only
+	ResponseModPipeline []ResponseModHook      // Second response pipeline: read/write
+	ResponseOutPipeline []ResponseReadOnlyHook // Third response pipeline: read-only
+	InScopeFunc         InScopeFunc            // Function to determine request scope
 	Client              *http.Client
 	CertCache           map[string]*tls.Certificate
 	CertMutex           sync.RWMutex
@@ -66,12 +66,12 @@ type Proxy struct {
 // NewProxy creates a new proxy instance with empty pipelines and default in-scope function
 func NewProxy(rootCA *x509.Certificate, rootKey *rsa.PrivateKey) *Proxy {
 	p := &Proxy{
-		RequestInPipeline:   []RequestInOutFunc{},
-		RequestModPipeline:  []RequestModFunc{},
-		RequestOutPipeline:  []RequestInOutFunc{},
-		ResponseInPipeline:  []ResponseInOutFunc{},
-		ResponseModPipeline: []ResponseModFunc{},
-		ResponseOutPipeline: []ResponseInOutFunc{},
+		RequestInPipeline:   []RequestReadOnlyHook{},
+		RequestModPipeline:  []RequestModHook{},
+		RequestOutPipeline:  []RequestReadOnlyHook{},
+		ResponseInPipeline:  []ResponseReadOnlyHook{},
+		ResponseModPipeline: []ResponseModHook{},
+		ResponseOutPipeline: []ResponseReadOnlyHook{},
 		InScopeFunc:         func(*http.Request) bool { return true }, // Default: all requests in scope
 		Client: &http.Client{
 			Transport: &http.Transport{
@@ -107,7 +107,7 @@ func (p *Proxy) processPipelineQueue() {
 
 // processRequestPipelineItem processes a single request pipeline item asynchronously and concurrently
 func (p *Proxy) processRequestPipelineItem(item pipelineQueueItem) {
-	pipeline := item.pipeline.([]RequestInOutFunc)
+	pipeline := item.pipeline.([]RequestReadOnlyHook)
 	req := item.req
 
 	if len(pipeline) == 0 {
@@ -120,7 +120,7 @@ func (p *Proxy) processRequestPipelineItem(item pipelineQueueItem) {
 	// Launch each pipeline function concurrently
 	for _, fn := range pipeline {
 		wg.Add(1)
-		go func(f RequestInOutFunc) {
+		go func(f RequestReadOnlyHook) {
 			defer wg.Done()
 			tempReq := cloneRequest(req)
 			if err := f(tempReq); err != nil {
@@ -143,7 +143,7 @@ func (p *Proxy) processRequestPipelineItem(item pipelineQueueItem) {
 
 // processResponsePipelineItem processes a single response pipeline item asynchronously and concurrently
 func (p *Proxy) processResponsePipelineItem(item pipelineQueueItem) {
-	pipeline := item.pipeline.([]ResponseInOutFunc)
+	pipeline := item.pipeline.([]ResponseReadOnlyHook)
 	resp := item.resp
 
 	if len(pipeline) == 0 {
@@ -156,7 +156,7 @@ func (p *Proxy) processResponsePipelineItem(item pipelineQueueItem) {
 	// Launch each pipeline function concurrently
 	for _, fn := range pipeline {
 		wg.Add(1)
-		go func(f ResponseInOutFunc) {
+		go func(f ResponseReadOnlyHook) {
 			defer wg.Done()
 			tempResp := cloneResponse(resp)
 			if err := f(tempResp); err != nil {

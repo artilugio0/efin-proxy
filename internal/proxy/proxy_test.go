@@ -49,9 +49,11 @@ func TestServeHTTP(t *testing.T) {
 	}
 
 	p := NewProxy(nil, rootKey) // Pass nil for rootCA since it’s not used
-	p.RequestModPipeline = append(p.RequestModPipeline, func(req *http.Request) (*http.Request, error) {
-		req.Header.Set("X-Modified", "true")
-		return req, nil
+	p.SetRequestModHooks([]ModHook[*http.Request]{
+		func(req *http.Request) (*http.Request, error) {
+			req.Header.Set("X-Modified", "true")
+			return req, nil
+		},
 	})
 
 	// Mock HTTP server

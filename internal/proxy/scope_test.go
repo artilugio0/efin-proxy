@@ -55,12 +55,12 @@ func TestScopeServeHTTP(t *testing.T) {
 					return nil
 				},
 			})
-			p.RequestModPipeline = []RequestModHook{
+			p.RequestModPipeline = newModPipeline([]ModHook[*http.Request]{
 				func(req *http.Request) (*http.Request, error) {
 					req.Header.Set("X-Mod", "mod1")
 					return req, nil
 				},
-			}
+			})
 			p.RequestOutPipeline = newReadOnlyPipeline([]ReadOnlyHook[*http.Request]{
 				func(req *http.Request) error {
 					outExecuted = true
@@ -73,12 +73,12 @@ func TestScopeServeHTTP(t *testing.T) {
 					return nil
 				},
 			})
-			p.ResponseModPipeline = []ResponseModHook{
+			p.ResponseModPipeline = newModPipeline([]ModHook[*http.Response]{
 				func(resp *http.Response) (*http.Response, error) {
 					resp.Header.Set("X-Mod", "mod1")
 					return resp, nil
 				},
-			}
+			})
 			p.ResponseOutPipeline = newReadOnlyPipeline([]ReadOnlyHook[*http.Response]{
 				func(resp *http.Response) error {
 					outExecuted = true
@@ -178,12 +178,12 @@ func TestScopeHandleConnect(t *testing.T) {
 					return nil
 				},
 			})
-			p.RequestModPipeline = []RequestModHook{
+			p.RequestModPipeline = newModPipeline([]ModHook[*http.Request]{
 				func(req *http.Request) (*http.Request, error) {
 					req.Header.Set("X-Mod", "mod1")
 					return req, nil
 				},
-			}
+			})
 			p.RequestOutPipeline = newReadOnlyPipeline([]ReadOnlyHook[*http.Request]{
 				func(req *http.Request) error {
 					outExecuted = true
@@ -196,12 +196,12 @@ func TestScopeHandleConnect(t *testing.T) {
 					return nil
 				},
 			})
-			p.ResponseModPipeline = []ResponseModHook{
+			p.ResponseModPipeline = newModPipeline([]ModHook[*http.Response]{
 				func(resp *http.Response) (*http.Response, error) {
 					resp.Header.Set("X-Mod", "mod1")
 					return resp, nil
 				},
-			}
+			})
 			p.ResponseOutPipeline = newReadOnlyPipeline([]ReadOnlyHook[*http.Response]{
 				func(resp *http.Response) error {
 					outExecuted = true

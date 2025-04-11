@@ -82,8 +82,10 @@ func main() {
 	p := proxy.NewProxy(rootCA, rootKey)
 
 	requestInHooks := []proxy.ReadOnlyHook[*http.Request]{}
+	requestModHooks := []proxy.ModHook[*http.Request]{}
 	requestOutHooks := []proxy.ReadOnlyHook[*http.Request]{}
 	responseInHooks := []proxy.ReadOnlyHook[*http.Response]{}
+	responseModHooks := []proxy.ModHook[*http.Response]{}
 	responseOutHooks := []proxy.ReadOnlyHook[*http.Response]{}
 
 	// Add logging hooks only if -p is set
@@ -94,7 +96,7 @@ func main() {
 	}
 
 	// Always add the Accept-Encoding removal hook (independent of flags)
-	p.RequestModPipeline = append(p.RequestModPipeline, func(r *http.Request) (*http.Request, error) {
+	requestModHooks = append(requestModHooks, func(r *http.Request) (*http.Request, error) {
 		r.Header.Del("Accept-Encoding")
 		return r, nil
 	})
@@ -117,8 +119,10 @@ func main() {
 	p.InScopeFunc = IsInScope
 
 	p.SetRequestInHooks(requestInHooks)
+	p.SetRequestModHooks(requestModHooks)
 	p.SetRequestOutHooks(requestOutHooks)
 	p.SetResponseInHooks(responseInHooks)
+	p.SetResponseModHooks(responseModHooks)
 	p.SetResponseOutHooks(responseOutHooks)
 
 	server := &http.Server{

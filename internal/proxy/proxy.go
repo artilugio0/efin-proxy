@@ -2,7 +2,6 @@ package proxy
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"crypto/rsa"
 	"crypto/tls"
@@ -19,18 +18,6 @@ import (
 	"github.com/google/uuid"
 )
 
-// RequestReadOnlyHook defines the signature for read-only request pipeline functions
-type RequestReadOnlyHook func(*http.Request) error
-
-// RequestModHook defines the signature for read/write request pipeline functions
-type RequestModHook func(*http.Request) (*http.Request, error)
-
-// ResponseReadOnlyHook defines the signature for read-only response pipeline functions
-type ResponseReadOnlyHook func(*http.Response) error
-
-// ResponseModHook defines the signature for read/write response pipeline functions
-type ResponseModHook func(*http.Response) (*http.Response, error)
-
 // InScopeFunc defines the signature for determining if a request is in scope
 type InScopeFunc func(*http.Request) bool
 
@@ -38,21 +25,13 @@ type requestIDKeyType struct{}
 
 var requestIDKey = requestIDKeyType{}
 
-// pipelineQueueItem represents an item in the pipeline processing queue
-type pipelineQueueItem struct {
-	isRequest bool
-	req       *http.Request
-	resp      *http.Response
-	pipeline  interface{} // Either []RequestReadOnlyHook or []ResponseReadOnlyHook
-}
-
 // Proxy struct holds the proxy configuration with pipelines and scope function
 type Proxy struct {
 	RequestInPipeline   *readOnlyPipeline[*http.Request]  // First request pipeline: read-only
-	RequestModPipeline  []RequestModHook                  // Second request pipeline: read/write
+	RequestModPipeline  *modPipeline[*http.Request]       // Second request pipeline: read/write
 	RequestOutPipeline  *readOnlyPipeline[*http.Request]  // Third request pipeline: read-only
 	ResponseInPipeline  *readOnlyPipeline[*http.Response] // First response pipeline: read-only
-	ResponseModPipeline []ResponseModHook                 // Second response pipeline: read/write
+	ResponseModPipeline *modPipeline[*http.Response]      // Second response pipeline: read/write
 	ResponseOutPipeline *readOnlyPipeline[*http.Response] // Third response pipeline: read-only
 	InScopeFunc         InScopeFunc                       // Function to determine request scope
 	Client              *http.Client
@@ -60,17 +39,16 @@ type Proxy struct {
 	CertMutex           sync.RWMutex
 	RootCA              *x509.Certificate
 	RootKey             *rsa.PrivateKey
-	pipelineQueue       chan pipelineQueueItem // Queue for asynchronous pipeline processing
 }
 
 // NewProxy creates a new proxy instance with empty pipelines and default in-scope function
 func NewProxy(rootCA *x509.Certificate, rootKey *rsa.PrivateKey) *Proxy {
 	p := &Proxy{
 		RequestInPipeline:   newReadOnlyPipeline[*http.Request](nil),
-		RequestModPipeline:  []RequestModHook{},
+		RequestModPipeline:  newModPipeline[*http.Request](nil),
 		RequestOutPipeline:  newReadOnlyPipeline[*http.Request](nil),
 		ResponseInPipeline:  newReadOnlyPipeline[*http.Response](nil),
-		ResponseModPipeline: []ResponseModHook{},
+		ResponseModPipeline: newModPipeline[*http.Response](nil),
 		ResponseOutPipeline: newReadOnlyPipeline[*http.Response](nil),
 		InScopeFunc:         func(*http.Request) bool { return true }, // Default: all requests in scope
 		Client: &http.Client{
@@ -81,100 +59,13 @@ func NewProxy(rootCA *x509.Certificate, rootKey *rsa.PrivateKey) *Proxy {
 				},
 			},
 		},
-		CertCache:     make(map[string]*tls.Certificate),
-		CertMutex:     sync.RWMutex{},
-		RootCA:        rootCA,
-		RootKey:       rootKey,
-		pipelineQueue: make(chan pipelineQueueItem, 1000), // Buffered channel for queue
+		CertCache: make(map[string]*tls.Certificate),
+		CertMutex: sync.RWMutex{},
+		RootCA:    rootCA,
+		RootKey:   rootKey,
 	}
-
-	// Start a goroutine to process the pipeline queue
-	go p.processPipelineQueue()
 
 	return p
-}
-
-// processPipelineQueue runs in a goroutine to process items from the pipeline queue
-func (p *Proxy) processPipelineQueue() {
-	for item := range p.pipelineQueue {
-		if item.isRequest {
-			p.processRequestPipelineItem(item)
-		} else {
-			p.processResponsePipelineItem(item)
-		}
-	}
-}
-
-// processRequestPipelineItem processes a single request pipeline item asynchronously and concurrently
-func (p *Proxy) processRequestPipelineItem(item pipelineQueueItem) {
-	pipeline := item.pipeline.([]RequestReadOnlyHook)
-	req := item.req
-
-	if len(pipeline) == 0 {
-		return
-	}
-
-	var wg sync.WaitGroup
-	errChan := make(chan error, len(pipeline))
-
-	// Launch each pipeline function concurrently
-	for _, fn := range pipeline {
-		wg.Add(1)
-		go func(f RequestReadOnlyHook) {
-			defer wg.Done()
-			tempReq := cloneRequest(req)
-			if err := f(tempReq); err != nil {
-				errChan <- err
-			}
-		}(fn)
-	}
-
-	// Wait for all goroutines to complete
-	wg.Wait()
-	close(errChan)
-
-	// Log any errors that occurred
-	for err := range errChan {
-		if err != nil {
-			log.Printf("Error processing request pipeline for request ID %s: %v", GetRequestID(req), err)
-		}
-	}
-}
-
-// processResponsePipelineItem processes a single response pipeline item asynchronously and concurrently
-func (p *Proxy) processResponsePipelineItem(item pipelineQueueItem) {
-	pipeline := item.pipeline.([]ResponseReadOnlyHook)
-	resp := item.resp
-
-	if len(pipeline) == 0 {
-		return
-	}
-
-	var wg sync.WaitGroup
-	errChan := make(chan error, len(pipeline))
-
-	// Launch each pipeline function concurrently
-	for _, fn := range pipeline {
-		wg.Add(1)
-		go func(f ResponseReadOnlyHook) {
-			defer wg.Done()
-			tempResp := cloneResponse(resp)
-			if err := f(tempResp); err != nil {
-				errChan <- err
-			}
-		}(fn)
-	}
-
-	// Wait for all goroutines to complete
-	wg.Wait()
-	close(errChan)
-
-	// Log any errors that occurred
-	for err := range errChan {
-		if err != nil {
-			log.Printf("Error processing response pipeline for request ID %s: %v", GetResponseID(resp), err)
-		}
-	}
 }
 
 // ServeHTTP handles incoming HTTP requests and responses with scope checking
@@ -316,15 +207,13 @@ func (p *Proxy) HandleConnect(w http.ResponseWriter, req *http.Request) {
 				return
 			}
 
-			var finalReq *http.Request
+			finalReq := httpReq
 			if p.InScopeFunc(httpReq) {
 				finalReq, err = p.processRequestPipelines(httpReq)
 				if err != nil {
 					log.Printf("Request pipeline error: %v", err)
 					return
 				}
-			} else {
-				finalReq = httpReq
 			}
 
 			err = finalReq.Write(tlsDestConn)
@@ -340,15 +229,13 @@ func (p *Proxy) HandleConnect(w http.ResponseWriter, req *http.Request) {
 			}
 			defer resp.Body.Close()
 
-			var finalResp *http.Response
+			finalResp := resp
 			if p.InScopeFunc(httpReq) {
 				finalResp, err = p.processResponsePipelines(resp)
 				if err != nil {
 					log.Printf("Response pipeline error: %v", err)
 					return
 				}
-			} else {
-				finalResp = cloneResponse(resp)
 			}
 
 			err = finalResp.Write(tlsClientConn)
@@ -367,14 +254,9 @@ func (p *Proxy) processRequestPipelines(req *http.Request) (*http.Request, error
 
 	p.RequestInPipeline.runPipeline(currentReq)
 
-	// Process RequestModPipeline synchronously (read/write pipeline)
-	for _, fn := range p.RequestModPipeline {
-		modifiedReq, err := fn(currentReq)
-		if err != nil {
-			return nil, fmt.Errorf("RequestModPipeline error: %v", err)
-		}
-		currentReq = modifiedReq
-		currentReq.Body.(*BodyWrapper).Reset()
+	currentReq, err := p.RequestModPipeline.runPipeline(currentReq)
+	if err != nil {
+		return nil, err
 	}
 
 	p.RequestOutPipeline.runPipeline(currentReq)
@@ -388,14 +270,9 @@ func (p *Proxy) processResponsePipelines(resp *http.Response) (*http.Response, e
 
 	p.ResponseInPipeline.runPipeline(currentResp)
 
-	// Process ResponseModPipeline synchronously (read/write pipeline)
-	for _, fn := range p.ResponseModPipeline {
-		modifiedResp, err := fn(currentResp)
-		if err != nil {
-			return nil, fmt.Errorf("ResponseModPipeline error: %v", err)
-		}
-		currentResp = modifiedResp
-		currentResp.Body.(*BodyWrapper).Reset()
+	currentResp, err := p.ResponseModPipeline.runPipeline(currentResp)
+	if err != nil {
+		return nil, err
 	}
 
 	p.ResponseOutPipeline.runPipeline(currentResp)
@@ -407,6 +284,10 @@ func (p *Proxy) SetRequestInHooks(hooks []ReadOnlyHook[*http.Request]) {
 	p.RequestInPipeline.setHooks(hooks)
 }
 
+func (p *Proxy) SetRequestModHooks(hooks []ModHook[*http.Request]) {
+	p.RequestModPipeline.setHooks(hooks)
+}
+
 func (p *Proxy) SetRequestOutHooks(hooks []ReadOnlyHook[*http.Request]) {
 	p.RequestOutPipeline.setHooks(hooks)
 }
@@ -415,67 +296,12 @@ func (p *Proxy) SetResponseInHooks(hooks []ReadOnlyHook[*http.Response]) {
 	p.ResponseInPipeline.setHooks(hooks)
 }
 
+func (p *Proxy) SetResponseModHooks(hooks []ModHook[*http.Response]) {
+	p.ResponseModPipeline.setHooks(hooks)
+}
+
 func (p *Proxy) SetResponseOutHooks(hooks []ReadOnlyHook[*http.Response]) {
 	p.ResponseOutPipeline.setHooks(hooks)
-}
-
-// cloneRequest creates a deep copy of an HTTP request
-func cloneRequest(req *http.Request) *http.Request {
-	r := new(http.Request)
-	*r = *req
-
-	r.Header = make(http.Header)
-	for k, v := range req.Header {
-		r.Header[k] = append([]string(nil), v...)
-	}
-
-	if req.Body != nil {
-		if wrapper, ok := req.Body.(*BodyWrapper); ok {
-			r.Body = wrapper.ShallowClone()
-		} else {
-			bodyBytes, err := io.ReadAll(req.Body)
-			if err != nil {
-				log.Printf("Error reading request body: %v", err)
-			}
-			newBody := NewBodyWrapper(bodyBytes)
-			req.Body = newBody
-			r.Body = newBody.ShallowClone()
-			r.ContentLength = req.ContentLength
-		}
-	} else {
-		r.Body = nil
-	}
-
-	return r
-}
-
-// cloneResponse creates a deep copy of an HTTP response
-func cloneResponse(resp *http.Response) *http.Response {
-	r := new(http.Response)
-	*r = *resp
-
-	r.Header = make(http.Header)
-	for k, v := range resp.Header {
-		r.Header[k] = append([]string(nil), v...)
-	}
-
-	if resp.Body != nil {
-		if wrapper, ok := resp.Body.(*BodyWrapper); ok {
-			r.Body = wrapper.ShallowClone()
-		} else {
-			bodyBytes, err := io.ReadAll(resp.Body)
-			if err != nil {
-				log.Printf("Error reading response body: %v", err)
-			}
-			newBody := NewBodyWrapper(bodyBytes)
-			resp.Body = newBody
-			r.Body = newBody.ShallowClone()
-		}
-	} else {
-		r.Body = nil
-	}
-
-	return r
 }
 
 // generateCert generates a certificate for a given host, caching it
@@ -526,44 +352,4 @@ func getRootCAPool(rootCA *x509.Certificate) *x509.CertPool {
 	pool := x509.NewCertPool()
 	pool.AddCert(rootCA)
 	return pool
-}
-
-// BodyWrapper is a type that wraps a byte array and implements io.ReadCloser
-type BodyWrapper struct {
-	data   []byte        // The underlying byte array
-	reader *bytes.Reader // The reader for the byte array
-}
-
-// NewBodyWrapper creates a new BodyWrapper from a byte slice
-func NewBodyWrapper(data []byte) *BodyWrapper {
-	return &BodyWrapper{
-		data:   data,
-		reader: bytes.NewReader(data),
-	}
-}
-
-// Read implements the io.Reader interface
-func (b *BodyWrapper) Read(p []byte) (n int, err error) {
-	return b.reader.Read(p)
-}
-
-// Close implements the io.Closer interface (no-op in this case)
-func (b *BodyWrapper) Close() error {
-	// Since we're using bytes.Reader, there's nothing to close,
-	// but we implement this for io.ReadCloser compatibility
-	return nil
-}
-
-// ShallowClone creates a new BodyWrapper instance with the same underlying
-// byte array and a fresh reader reset to the start
-func (b *BodyWrapper) ShallowClone() *BodyWrapper {
-	return &BodyWrapper{
-		data:   b.data,                  // Reference the same byte array (shallow copy)
-		reader: bytes.NewReader(b.data), // New reader starting at position 0
-	}
-}
-
-// Reset resets the reader's position to the beginning of the byte array
-func (b *BodyWrapper) Reset() {
-	b.reader.Seek(0, io.SeekStart)
 }

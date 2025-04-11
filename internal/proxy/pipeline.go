@@ -7,12 +7,13 @@ import (
 	"sync"
 )
 
+type ReadOnlyHook[I pipelineItem] func(I) error
+type ModHook[I pipelineItem] func(I) (I, error)
+
 type pipelineItem interface{ *http.Request | *http.Response }
 
-type ReadOnlyHook[I pipelineItem] func(I) error
-
-// queueItem represents an item in the hooks processing queue
-type queueItem[I pipelineItem] struct {
+// roQueueItem represents an item in the hooks processing queue
+type roQueueItem[I pipelineItem] struct {
 	req   I
 	hooks []ReadOnlyHook[I]
 }
@@ -20,7 +21,7 @@ type queueItem[I pipelineItem] struct {
 type readOnlyPipeline[I pipelineItem] struct {
 	hooks      []ReadOnlyHook[I]
 	hooksMutex sync.RWMutex
-	queue      chan queueItem[I]
+	queue      chan roQueueItem[I]
 }
 
 func newReadOnlyPipeline[I pipelineItem](hooks []ReadOnlyHook[I]) *readOnlyPipeline[I] {
@@ -28,7 +29,7 @@ func newReadOnlyPipeline[I pipelineItem](hooks []ReadOnlyHook[I]) *readOnlyPipel
 		hooks:      append([]ReadOnlyHook[I]{}, hooks...),
 		hooksMutex: sync.RWMutex{},
 
-		queue: make(chan queueItem[I], 1000),
+		queue: make(chan roQueueItem[I], 1000),
 	}
 
 	go pipeline.processPipelineQueue()
@@ -43,7 +44,7 @@ func (p *readOnlyPipeline[I]) processPipelineQueue() {
 }
 
 // processRequestPipelineItem processes a single request pipeline item asynchronously and concurrently
-func (p *readOnlyPipeline[I]) processItem(item queueItem[I]) {
+func (p *readOnlyPipeline[I]) processItem(item roQueueItem[I]) {
 	hooks := item.hooks
 	req := item.req
 
@@ -85,7 +86,7 @@ func (p *readOnlyPipeline[I]) runPipeline(r I) error {
 
 	if len(hooks) > 0 {
 		select {
-		case p.queue <- queueItem[I]{
+		case p.queue <- roQueueItem[I]{
 			req:   r,
 			hooks: hooks,
 		}:
@@ -100,6 +101,57 @@ func (p *readOnlyPipeline[I]) runPipeline(r I) error {
 func (p *readOnlyPipeline[I]) setHooks(hooks []ReadOnlyHook[I]) {
 	p.hooksMutex.Lock()
 	p.hooks = append([]ReadOnlyHook[I]{}, hooks...)
+	p.hooksMutex.Unlock()
+}
+
+type modPipeline[I pipelineItem] struct {
+	hooks      []ModHook[I]
+	hooksMutex sync.RWMutex
+}
+
+func newModPipeline[I pipelineItem](hooks []ModHook[I]) *modPipeline[I] {
+	pipeline := &modPipeline[I]{
+		hooks:      append([]ModHook[I]{}, hooks...),
+		hooksMutex: sync.RWMutex{},
+	}
+
+	return pipeline
+}
+
+func (p *modPipeline[I]) runPipeline(r I) (I, error) {
+	p.hooksMutex.RLock()
+	hooks := p.hooks
+	p.hooksMutex.RUnlock()
+
+	for _, fn := range hooks {
+		modifiedReq, err := fn(r)
+		if err != nil {
+			return r, err
+		}
+		r = modifiedReq
+
+		switch v := any(r).(type) {
+		case *http.Request:
+			if body, ok := v.Body.(*BodyWrapper); ok {
+				body.Reset()
+			} else {
+				r = clone(r)
+			}
+		case *http.Response:
+			if body, ok := v.Body.(*BodyWrapper); ok {
+				body.Reset()
+			} else {
+				r = clone(r)
+			}
+		}
+	}
+
+	return r, nil
+}
+
+func (p *modPipeline[I]) setHooks(hooks []ModHook[I]) {
+	p.hooksMutex.Lock()
+	p.hooks = append([]ModHook[I]{}, hooks...)
 	p.hooksMutex.Unlock()
 }
 

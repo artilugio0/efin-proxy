@@ -32,9 +32,11 @@ func TestHandleConnectRegularHTTPRequest(t *testing.T) {
 	}
 
 	p := NewProxy(rootCA, rootKey)
-	p.RequestModPipeline = append(p.RequestModPipeline, func(req *http.Request) (*http.Request, error) {
-		req.Header.Set("X-Modified", "true")
-		return req, nil
+	p.SetRequestModHooks([]ModHook[*http.Request]{
+		func(req *http.Request) (*http.Request, error) {
+			req.Header.Set("X-Modified", "true")
+			return req, nil
+		},
 	})
 
 	serverCert, err := certs.GenerateCert([]string{"localhost", "127.0.0.1"}, rootCA, rootKey)
@@ -102,9 +104,11 @@ func TestHandleConnectWebSocketRequest(t *testing.T) {
 	}
 
 	p := NewProxy(rootCA, rootKey)
-	p.RequestModPipeline = append(p.RequestModPipeline, func(req *http.Request) (*http.Request, error) {
-		req.Header.Set("X-Modified", "true")
-		return req, nil
+	p.SetRequestModHooks([]ModHook[*http.Request]{
+		func(req *http.Request) (*http.Request, error) {
+			req.Header.Set("X-Modified", "true")
+			return req, nil
+		},
 	})
 
 	serverCert, err := certs.GenerateCert([]string{"localhost", "127.0.0.1"}, rootCA, rootKey)

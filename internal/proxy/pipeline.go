@@ -7,43 +7,48 @@ import (
 	"sync"
 )
 
+// ReadOnlyHook defines a hook that processes an item without modifying it.
 type ReadOnlyHook[I pipelineItem] func(I) error
+
+// ModHook defines a hook that can modify an item and return it.
 type ModHook[I pipelineItem] func(I) (I, error)
 
+// pipelineItem constrains the types that can be processed by the pipelines.
 type pipelineItem interface{ *http.Request | *http.Response }
 
-// roQueueItem represents an item in the hooks processing queue
+// roQueueItem represents an item in the read-only pipeline's processing queue.
 type roQueueItem[I pipelineItem] struct {
 	req   I
 	hooks []ReadOnlyHook[I]
 }
 
+// readOnlyPipeline manages a pipeline of read-only hooks processed asynchronously.
 type readOnlyPipeline[I pipelineItem] struct {
 	hooks      []ReadOnlyHook[I]
 	hooksMutex sync.RWMutex
 	queue      chan roQueueItem[I]
 }
 
+// newReadOnlyPipeline initializes a new read-only pipeline with the given hooks.
 func newReadOnlyPipeline[I pipelineItem](hooks []ReadOnlyHook[I]) *readOnlyPipeline[I] {
 	pipeline := &readOnlyPipeline[I]{
-		hooks:      append([]ReadOnlyHook[I]{}, hooks...),
+		hooks:      append([]ReadOnlyHook[I]{}, hooks...), // Defensive copy of hooks
 		hooksMutex: sync.RWMutex{},
-
-		queue: make(chan roQueueItem[I], 1000),
+		queue:      make(chan roQueueItem[I], 1000), // Buffer size of 1000
 	}
 
 	go pipeline.processPipelineQueue()
 	return pipeline
 }
 
-// processPipelineQueue runs in a goroutine to process items from the pipeline queue
+// processPipelineQueue runs in a goroutine to process items from the queue.
 func (p *readOnlyPipeline[I]) processPipelineQueue() {
 	for item := range p.queue {
 		p.processItem(item)
 	}
 }
 
-// processRequestPipelineItem processes a single request pipeline item asynchronously and concurrently
+// processItem processes a single pipeline item by applying all hooks concurrently.
 func (p *readOnlyPipeline[I]) processItem(item roQueueItem[I]) {
 	hooks := item.hooks
 	req := item.req
@@ -55,7 +60,6 @@ func (p *readOnlyPipeline[I]) processItem(item roQueueItem[I]) {
 	var wg sync.WaitGroup
 	errChan := make(chan error, len(hooks))
 
-	// Launch each hook function concurrently
 	for _, fn := range hooks {
 		wg.Add(1)
 		go func(f ReadOnlyHook[I]) {
@@ -67,11 +71,10 @@ func (p *readOnlyPipeline[I]) processItem(item roQueueItem[I]) {
 		}(fn)
 	}
 
-	// Wait for all goroutines to complete
 	wg.Wait()
 	close(errChan)
 
-	// Log any errors that occurred
+	// Log any errors from hook execution
 	for err := range errChan {
 		if err != nil {
 			log.Printf("Error processing pipeline: %v", err)
@@ -79,6 +82,7 @@ func (p *readOnlyPipeline[I]) processItem(item roQueueItem[I]) {
 	}
 }
 
+// runPipeline queues an item for processing in the read-only pipeline.
 func (p *readOnlyPipeline[I]) runPipeline(r I) error {
 	p.hooksMutex.RLock()
 	hooks := p.hooks
@@ -86,38 +90,37 @@ func (p *readOnlyPipeline[I]) runPipeline(r I) error {
 
 	if len(hooks) > 0 {
 		select {
-		case p.queue <- roQueueItem[I]{
-			req:   r,
-			hooks: hooks,
-		}:
+		case p.queue <- roQueueItem[I]{req: r, hooks: hooks}:
+			// Successfully queued
 		default:
-			return fmt.Errorf("Pipeline queue full")
+			return fmt.Errorf("pipeline queue full")
 		}
 	}
-
 	return nil
 }
 
+// setHooks updates the hooks in the read-only pipeline.
 func (p *readOnlyPipeline[I]) setHooks(hooks []ReadOnlyHook[I]) {
 	p.hooksMutex.Lock()
-	p.hooks = append([]ReadOnlyHook[I]{}, hooks...)
+	p.hooks = append([]ReadOnlyHook[I]{}, hooks...) // Defensive copy
 	p.hooksMutex.Unlock()
 }
 
+// modPipeline manages a pipeline of modification hooks processed synchronously.
 type modPipeline[I pipelineItem] struct {
 	hooks      []ModHook[I]
 	hooksMutex sync.RWMutex
 }
 
+// newModPipeline initializes a new modification pipeline with the given hooks.
 func newModPipeline[I pipelineItem](hooks []ModHook[I]) *modPipeline[I] {
-	pipeline := &modPipeline[I]{
-		hooks:      append([]ModHook[I]{}, hooks...),
+	return &modPipeline[I]{
+		hooks:      append([]ModHook[I]{}, hooks...), // Defensive copy
 		hooksMutex: sync.RWMutex{},
 	}
-
-	return pipeline
 }
 
+// runPipeline applies all modification hooks sequentially to the item.
 func (p *modPipeline[I]) runPipeline(r I) (I, error) {
 	p.hooksMutex.RLock()
 	hooks := p.hooks
@@ -130,6 +133,7 @@ func (p *modPipeline[I]) runPipeline(r I) (I, error) {
 		}
 		r = modifiedReq
 
+		// Handle body reset or cloning based on type
 		switch v := any(r).(type) {
 		case *http.Request:
 			if body, ok := v.Body.(*BodyWrapper); ok {
@@ -145,23 +149,24 @@ func (p *modPipeline[I]) runPipeline(r I) (I, error) {
 			}
 		}
 	}
-
 	return r, nil
 }
 
+// setHooks updates the hooks in the modification pipeline.
 func (p *modPipeline[I]) setHooks(hooks []ModHook[I]) {
 	p.hooksMutex.Lock()
-	p.hooks = append([]ModHook[I]{}, hooks...)
+	p.hooks = append([]ModHook[I]{}, hooks...) // Defensive copy
 	p.hooksMutex.Unlock()
 }
 
+// clone creates a copy of the pipeline item to prevent unintended modifications.
 func clone[I pipelineItem](r I) I {
 	switch v := any(r).(type) {
 	case *http.Request:
 		return any(cloneRequest(v)).(I)
 	case *http.Response:
 		return any(cloneResponse(v)).(I)
+	default:
+		panic(fmt.Sprintf("Error: invalid type in clone function: %T", r))
 	}
-
-	panic("invalid type used in clone function")
 }

@@ -635,8 +635,15 @@ FOR:
 
 func asyncCloseChannel[I any](c chan<- I) {
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				fmt.Println("double close on channel", r)
+			}
+		}()
 		time.Sleep(60 * time.Second)
 		log.Printf("channel closed")
 		close(c)
 	}()
 }
+
+var closedChannels *sync.Map = &sync.Map{}

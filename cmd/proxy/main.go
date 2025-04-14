@@ -14,6 +14,7 @@ import (
 	_ "modernc.org/sqlite" // SQLite driver
 
 	"github.com/artilugio0/proxy-vibes/internal/certs"
+	"github.com/artilugio0/proxy-vibes/internal/grpc"
 	"github.com/artilugio0/proxy-vibes/internal/hooks"
 	"github.com/artilugio0/proxy-vibes/internal/proxy"
 )
@@ -44,7 +45,6 @@ func main() {
 		}
 		defer db.Close()
 
-		// Create tables if they don’t exist
 		err = hooks.InitDatabase(db)
 		if err != nil {
 			log.Fatalf("Failed to initialize database: %v", err)
@@ -54,7 +54,6 @@ func main() {
 	var rootCA *x509.Certificate
 	var rootKey *rsa.PrivateKey
 
-	// Use provided cert and key files if both are specified, otherwise generate a new Root CA
 	if *certFile != "" && *keyFile != "" {
 		rca, rk, err := certs.LoadRootCA(*certFile, *keyFile)
 		if err != nil {
@@ -88,20 +87,20 @@ func main() {
 	responseModHooks := []proxy.ModHook[*http.Response]{}
 	responseOutHooks := []proxy.ReadOnlyHook[*http.Response]{}
 
-	// Add logging hooks only if -p is set
+	// Add logging hooks if -p is set
 	if *printLogs {
 		requestOutHooks = append(requestOutHooks, hooks.LogRawRequest)
 		responseInHooks = append(responseInHooks, hooks.LogRawResponse)
 		log.Printf("Enabled raw request/response logging to stdout")
 	}
 
-	// Always add the Accept-Encoding removal hook (independent of flags)
+	// Add Accept-Encoding removal hook
 	requestModHooks = append(requestModHooks, func(r *http.Request) (*http.Request, error) {
 		r.Header.Del("Accept-Encoding")
 		return r, nil
 	})
 
-	// Add database save hooks only if database is initialized (-D or -db-file)
+	// Add database save hooks if database is initialized
 	if db != nil {
 		saveRequest, saveResponse := hooks.NewDBSaveHooks(db)
 		requestOutHooks = append(requestOutHooks, saveRequest)
@@ -109,13 +108,24 @@ func main() {
 		log.Printf("Saving requests and responses to database at %s", dbPath)
 	}
 
-	// Add file save hooks if directory is specified (-d)
+	// Add file save hooks if directory is specified
 	if *saveDir != "" {
 		saveRequest, saveResponse := hooks.NewFileSaveHooks(*saveDir)
 		requestOutHooks = append(requestOutHooks, saveRequest)
 		responseInHooks = append(responseInHooks, saveResponse)
 		log.Printf("Saving requests and responses to directory: %s", *saveDir)
 	}
+
+	// Initialize gRPC client manager and start the server and define gRPC hooks
+	grpcServer := grpc.NewServer()
+
+	requestInHooks = append(requestInHooks, grpcServer.RequestInHook)
+	requestModHooks = append(requestModHooks, grpcServer.RequestModHook)
+	requestOutHooks = append(requestOutHooks, grpcServer.RequestOutHook)
+	responseInHooks = append(responseInHooks, grpcServer.ResponseInHook)
+	responseModHooks = append(responseModHooks, grpcServer.ResponseModHook)
+	responseOutHooks = append(responseOutHooks, grpcServer.ResponseOutHook)
+
 	p.InScopeFunc = IsInScope
 
 	p.SetRequestInHooks(requestInHooks)
@@ -226,6 +236,7 @@ func IsBinaryDataRequest(r *http.Request) bool {
 		".iso":  true,
 		".dat":  true,
 		".db":   true,
+		".img":  true,
 	}
 	return binaryExtensions[ext] && !multimediaExtensions[ext]
 }

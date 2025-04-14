@@ -17,6 +17,9 @@
           gopls
           gotools
           sqlite
+          grpc-tools
+          protoc-gen-go
+          protoc-gen-go-grpc
         ];
       };
     };

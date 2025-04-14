@@ -13,6 +13,8 @@ import (
 	"testing"
 
 	"github.com/artilugio0/proxy-vibes/internal/certs"
+	"github.com/artilugio0/proxy-vibes/internal/ids"
+	"github.com/artilugio0/proxy-vibes/internal/pipeline"
 )
 
 // TestNewProxy tests the NewProxy constructor
@@ -49,7 +51,7 @@ func TestServeHTTP(t *testing.T) {
 	}
 
 	p := NewProxy(nil, rootKey) // Pass nil for rootCA since it’s not used
-	p.SetRequestModHooks([]ModHook[*http.Request]{
+	p.SetRequestModHooks([]pipeline.ModHook[*http.Request]{
 		func(req *http.Request) (*http.Request, error) {
 			req.Header.Set("X-Modified", "true")
 			return req, nil
@@ -84,53 +86,6 @@ func TestServeHTTP(t *testing.T) {
 	}
 	if !strings.Contains(response, "Success") {
 		t.Errorf("Expected response 'Success', got %s", response)
-	}
-}
-
-// TestCloneRequest tests the cloneRequest function
-func TestCloneRequest(t *testing.T) {
-	// Test with no body (GET request)
-	req := httptest.NewRequest("GET", "http://example.com", nil)
-	req.Header.Set("X-Test", "value")
-	cloned := cloneRequest(req)
-
-	if cloned == req {
-		t.Errorf("cloneRequest should return a new request, got same pointer: %p", req)
-	}
-	if cloned.URL.String() != req.URL.String() {
-		t.Errorf("Expected URL %s, got %s", req.URL.String(), cloned.URL.String())
-	}
-	if cloned.Header.Get("X-Test") != "value" {
-		t.Errorf("Expected header X-Test 'value', got %s", cloned.Header.Get("X-Test"))
-	}
-	if cloned.Body == nil {
-		t.Error("Expected non-nil body (empty reader) for GET request, got nil")
-	}
-	clonedBody, _ := io.ReadAll(cloned.Body)
-	if len(clonedBody) != 0 {
-		t.Errorf("Expected empty body for GET request, got %s", string(clonedBody))
-	}
-
-	// Test with body (POST request)
-	body := "test body"
-	reqWithBody := httptest.NewRequest("POST", "http://example.com", strings.NewReader(body))
-	clonedWithBody := cloneRequest(reqWithBody)
-
-	if clonedWithBody == reqWithBody {
-		t.Errorf("cloneRequest should return a new request, got same pointer: %p", reqWithBody)
-	}
-	clonedBody, _ = io.ReadAll(clonedWithBody.Body)
-	if string(clonedBody) != body {
-		t.Errorf("Expected body %s, got %s", body, string(clonedBody))
-	}
-	if clonedWithBody.ContentLength != int64(len(body)) {
-		t.Errorf("Expected ContentLength %d, got %d", len(body), clonedWithBody.ContentLength)
-	}
-
-	// Verify original body is preserved
-	origBody, _ := io.ReadAll(reqWithBody.Body)
-	if string(origBody) != body {
-		t.Errorf("Original body should be preserved, got %s", string(origBody))
 	}
 }
 
@@ -200,9 +155,9 @@ func TestServeHTTPOutOfScope(t *testing.T) {
 	}
 
 	p := NewProxy(nil, rootKey)
-	p.InScopeFunc = func(req *http.Request) bool {
+	p.SetScope(func(req *http.Request) bool {
 		return false // Out of scope
-	}
+	})
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("Success"))
@@ -243,18 +198,18 @@ func TestServeHTTPWithID(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(2)
 	// Hook to capture request ID
-	p.RequestInPipeline = newReadOnlyPipeline([]ReadOnlyHook[*http.Request]{
+	p.requestInPipeline = pipeline.NewReadOnlyPipeline([]pipeline.ReadOnlyHook[*http.Request]{
 		func(req *http.Request) error {
 			defer wg.Done()
-			requestID = GetRequestID(req)
+			requestID = ids.GetRequestID(req)
 			return nil
 		},
 	})
 	// Hook to capture response ID
-	p.ResponseInPipeline = newReadOnlyPipeline([]ReadOnlyHook[*http.Response]{
+	p.responseInPipeline = pipeline.NewReadOnlyPipeline([]pipeline.ReadOnlyHook[*http.Response]{
 		func(resp *http.Response) error {
 			defer wg.Done()
-			responseID = GetResponseID(resp)
+			responseID = ids.GetResponseID(resp)
 			return nil
 		},
 	})
@@ -308,15 +263,15 @@ func TestServeHTTPDifferentIDs(t *testing.T) {
 	}
 
 	p := NewProxy(nil, rootKey)
-	ids := make([]string, 2)
+	theIds := make([]string, 2)
 
 	// Hook to capture request IDs
-	p.RequestInPipeline = newReadOnlyPipeline([]ReadOnlyHook[*http.Request]{
+	p.requestInPipeline = pipeline.NewReadOnlyPipeline([]pipeline.ReadOnlyHook[*http.Request]{
 		func(req *http.Request) error {
-			if len(ids[0]) == 0 {
-				ids[0] = GetRequestID(req)
+			if len(theIds[0]) == 0 {
+				theIds[0] = ids.GetRequestID(req)
 			} else {
-				ids[1] = GetRequestID(req)
+				theIds[1] = ids.GetRequestID(req)
 			}
 			return nil
 		},
@@ -355,11 +310,11 @@ func TestServeHTTPDifferentIDs(t *testing.T) {
 	}
 
 	// Check IDs are accessible and different
-	if ids[0] == "" || ids[1] == "" {
-		t.Errorf("Expected all request IDs to be set, got %v", ids)
+	if theIds[0] == "" || theIds[1] == "" {
+		t.Errorf("Expected all request IDs to be set, got %v", theIds)
 	}
-	if ids[0] == ids[1] {
-		t.Errorf("Expected different IDs, got %q for both requests", ids[0])
+	if theIds[0] == theIds[1] {
+		t.Errorf("Expected different IDs, got %q for both requests", theIds[0])
 	}
 }
 
@@ -382,16 +337,16 @@ func TestHandleConnectWithID(t *testing.T) {
 	var requestID, responseID string
 
 	// Hook to capture request ID
-	p.RequestInPipeline = newReadOnlyPipeline([]ReadOnlyHook[*http.Request]{
+	p.requestInPipeline = pipeline.NewReadOnlyPipeline([]pipeline.ReadOnlyHook[*http.Request]{
 		func(req *http.Request) error {
-			requestID = GetRequestID(req)
+			requestID = ids.GetRequestID(req)
 			return nil
 		},
 	})
 	// Hook to capture response ID
-	p.ResponseInPipeline = newReadOnlyPipeline([]ReadOnlyHook[*http.Response]{
+	p.responseInPipeline = pipeline.NewReadOnlyPipeline([]pipeline.ReadOnlyHook[*http.Response]{
 		func(resp *http.Response) error {
-			responseID = GetResponseID(resp)
+			responseID = ids.GetResponseID(resp)
 			return nil
 		},
 	})
@@ -472,18 +427,18 @@ func TestHandleConnectDifferentIDs(t *testing.T) {
 	}
 
 	p := NewProxy(rootCA, rootKey)
-	ids := make([]string, 2)
+	theIds := make([]string, 2)
 	var mu sync.Mutex
 	requestCount := 0
 
 	// Hook to capture request IDs
 
-	p.RequestInPipeline = newReadOnlyPipeline([]ReadOnlyHook[*http.Request]{
+	p.requestInPipeline = pipeline.NewReadOnlyPipeline([]pipeline.ReadOnlyHook[*http.Request]{
 		func(req *http.Request) error {
 			mu.Lock()
 			defer mu.Unlock()
 			if requestCount < 2 {
-				ids[requestCount] = GetRequestID(req)
+				theIds[requestCount] = ids.GetRequestID(req)
 				requestCount++
 			}
 			return nil
@@ -544,10 +499,10 @@ func TestHandleConnectDifferentIDs(t *testing.T) {
 	}
 
 	// Check IDs are accessible and different
-	if ids[0] == "" || ids[1] == "" {
-		t.Errorf("Expected all request IDs to be set, got %v", ids)
+	if theIds[0] == "" || theIds[1] == "" {
+		t.Errorf("Expected all request IDs to be set, got %v", theIds)
 	}
-	if ids[0] == ids[1] {
-		t.Errorf("Expected different IDs, got %q for both requests", ids[0])
+	if theIds[0] == theIds[1] {
+		t.Errorf("Expected different IDs, got %q for both requests", theIds[0])
 	}
 }

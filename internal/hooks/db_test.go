@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/artilugio0/proxy-vibes/internal/proxy"
+	"github.com/artilugio0/proxy-vibes/internal/ids"
 	_ "modernc.org/sqlite" // SQLite driver
 )
 
@@ -71,7 +71,7 @@ func TestSaveRequestToDB(t *testing.T) {
 	req.Header.Set("User-Agent", "test-agent")
 	req.Header.Set("Cookie", "session=abc123")
 	req.Host = "example.com" // Set Host field explicitly
-	req = proxy.SetRequestID(req, "test-request-id")
+	req = ids.SetRequestID(req, "test-request-id")
 
 	// Save the request
 	err = saveRequestToDB(db, req)
@@ -153,7 +153,7 @@ func TestSaveResponseToDB(t *testing.T) {
 	w.Write([]byte("response body"))
 	resp := w.Result()
 	resp.Request = httptest.NewRequest("GET", "http://example.com", nil)
-	resp.Request = proxy.SetRequestID(resp.Request, "test-response-id")
+	resp.Request = ids.SetRequestID(resp.Request, "test-response-id")
 
 	// Save the response
 	err = saveResponseToDB(db, resp)

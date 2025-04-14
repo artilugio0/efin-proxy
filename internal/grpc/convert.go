@@ -6,7 +6,7 @@ import (
 	"net/http"
 
 	pb "github.com/artilugio0/proxy-vibes/internal/grpc/proto"
-	"github.com/artilugio0/proxy-vibes/internal/proxy"
+	"github.com/artilugio0/proxy-vibes/internal/ids"
 )
 
 // ToProtoRequest converts an http.Request to a proto HttpRequest.
@@ -23,7 +23,7 @@ func ToProtoRequest(req *http.Request) *pb.HttpRequest {
 		req.Body = io.NopCloser(bytes.NewBuffer(body))
 	}
 	return &pb.HttpRequest{
-		Id:      proxy.GetRequestID(req),
+		Id:      ids.GetRequestID(req),
 		Method:  req.Method,
 		Url:     req.URL.String(),
 		Headers: headers,
@@ -40,7 +40,7 @@ func FromProtoRequest(protoReq *pb.HttpRequest) (*http.Request, error) {
 	for _, h := range protoReq.Headers {
 		req.Header.Add(h.Name, h.Value)
 	}
-	req = proxy.SetRequestID(req, protoReq.Id)
+	req = ids.SetRequestID(req, protoReq.Id)
 	return req, nil
 }
 
@@ -58,7 +58,7 @@ func ToProtoResponse(resp *http.Response) *pb.HttpResponse {
 		resp.Body = io.NopCloser(bytes.NewBuffer(body))
 	}
 	return &pb.HttpResponse{
-		Id:         proxy.GetResponseID(resp),
+		Id:         ids.GetResponseID(resp),
 		StatusCode: int32(resp.StatusCode),
 		Headers:    headers,
 		Body:       body,

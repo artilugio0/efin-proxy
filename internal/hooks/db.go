@@ -10,7 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/artilugio0/proxy-vibes/internal/proxy"
+	"github.com/artilugio0/proxy-vibes/internal/ids"
+	"github.com/artilugio0/proxy-vibes/internal/pipeline"
 	"modernc.org/sqlite" // Use the main package for error handling
 )
 
@@ -70,7 +71,7 @@ type dbQueueItem struct {
 }
 
 // NewDBSaveHooks returns request and response hooks that send data to a queue for asynchronous processing
-func NewDBSaveHooks(db *sql.DB) (proxy.ReadOnlyHook[*http.Request], proxy.ReadOnlyHook[*http.Response]) {
+func NewDBSaveHooks(db *sql.DB) (pipeline.ReadOnlyHook[*http.Request], pipeline.ReadOnlyHook[*http.Response]) {
 	// Buffered channel to act as a queue (adjust size based on expected load)
 	queue := make(chan dbQueueItem, 1000)
 
@@ -93,7 +94,7 @@ func NewDBSaveHooks(db *sql.DB) (proxy.ReadOnlyHook[*http.Request], proxy.ReadOn
 
 	// Request hook: sends to queue and returns immediately
 	saveRequest := func(req *http.Request) error {
-		id := proxy.GetRequestID(req)
+		id := ids.GetRequestID(req)
 		if id == "" {
 			return fmt.Errorf("no request ID found")
 		}
@@ -110,7 +111,7 @@ func NewDBSaveHooks(db *sql.DB) (proxy.ReadOnlyHook[*http.Request], proxy.ReadOn
 
 	// Response hook: sends to queue and returns immediately
 	saveResponse := func(resp *http.Response) error {
-		id := proxy.GetResponseID(resp)
+		id := ids.GetResponseID(resp)
 		if id == "" {
 			return fmt.Errorf("no response ID found")
 		}
@@ -130,7 +131,7 @@ func NewDBSaveHooks(db *sql.DB) (proxy.ReadOnlyHook[*http.Request], proxy.ReadOn
 
 // saveRequestToDB performs the actual database insert for a request with retries
 func saveRequestToDB(db *sql.DB, req *http.Request) error {
-	id := proxy.GetRequestID(req)
+	id := ids.GetRequestID(req)
 
 	// Get body
 	var body []byte
@@ -224,7 +225,7 @@ func saveRequestToDB(db *sql.DB, req *http.Request) error {
 
 // saveResponseToDB performs the actual database insert for a response with retries
 func saveResponseToDB(db *sql.DB, resp *http.Response) error {
-	id := proxy.GetResponseID(resp)
+	id := ids.GetResponseID(resp)
 
 	// Get body
 	var body []byte

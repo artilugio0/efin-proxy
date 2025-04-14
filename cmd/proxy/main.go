@@ -16,7 +16,8 @@ import (
 	"github.com/artilugio0/proxy-vibes/internal/certs"
 	"github.com/artilugio0/proxy-vibes/internal/grpc"
 	"github.com/artilugio0/proxy-vibes/internal/hooks"
-	"github.com/artilugio0/proxy-vibes/internal/proxy"
+	"github.com/artilugio0/proxy-vibes/internal/pipeline"
+	"github.com/artilugio0/proxy-vibes/pkg/proxy"
 )
 
 func main() {
@@ -80,12 +81,12 @@ func main() {
 
 	p := proxy.NewProxy(rootCA, rootKey)
 
-	requestInHooks := []proxy.ReadOnlyHook[*http.Request]{}
-	requestModHooks := []proxy.ModHook[*http.Request]{}
-	requestOutHooks := []proxy.ReadOnlyHook[*http.Request]{}
-	responseInHooks := []proxy.ReadOnlyHook[*http.Response]{}
-	responseModHooks := []proxy.ModHook[*http.Response]{}
-	responseOutHooks := []proxy.ReadOnlyHook[*http.Response]{}
+	requestInHooks := []pipeline.ReadOnlyHook[*http.Request]{}
+	requestModHooks := []pipeline.ModHook[*http.Request]{}
+	requestOutHooks := []pipeline.ReadOnlyHook[*http.Request]{}
+	responseInHooks := []pipeline.ReadOnlyHook[*http.Response]{}
+	responseModHooks := []pipeline.ModHook[*http.Response]{}
+	responseOutHooks := []pipeline.ReadOnlyHook[*http.Response]{}
 
 	// Add logging hooks if -p is set
 	if *printLogs {
@@ -126,7 +127,7 @@ func main() {
 	responseModHooks = append(responseModHooks, grpcServer.ResponseModHook)
 	responseOutHooks = append(responseOutHooks, grpcServer.ResponseOutHook)
 
-	p.InScopeFunc = IsInScope
+	p.SetScope(isInScope)
 
 	p.SetRequestInHooks(requestInHooks)
 	p.SetRequestModHooks(requestModHooks)
@@ -150,8 +151,8 @@ func main() {
 	log.Fatal(server.ListenAndServe())
 }
 
-// IsInScope and other helper functions remain unchanged...
-func IsInScope(r *http.Request) bool {
+// isInScope and other helper functions remain unchanged...
+func isInScope(r *http.Request) bool {
 	return !IsMultimediaRequest(r) && !IsBinaryDataRequest(r)
 }
 

@@ -2,7 +2,6 @@ package proxy
 
 import (
 	"bufio"
-	"context"
 	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
@@ -14,6 +13,9 @@ import (
 	"sync"
 
 	"github.com/artilugio0/proxy-vibes/internal/certs"
+	"github.com/artilugio0/proxy-vibes/internal/httpbytes"
+	"github.com/artilugio0/proxy-vibes/internal/ids"
+	"github.com/artilugio0/proxy-vibes/internal/pipeline"
 	"github.com/artilugio0/proxy-vibes/internal/websockets"
 	"github.com/google/uuid"
 )
@@ -21,36 +23,39 @@ import (
 // InScopeFunc defines the signature for determining if a request is in scope
 type InScopeFunc func(*http.Request) bool
 
-type requestIDKeyType struct{}
-
-var requestIDKey = requestIDKeyType{}
-
 // Proxy struct holds the proxy configuration with pipelines and scope function
 type Proxy struct {
-	RequestInPipeline   *readOnlyPipeline[*http.Request]  // First request pipeline: read-only
-	RequestModPipeline  *modPipeline[*http.Request]       // Second request pipeline: read/write
-	RequestOutPipeline  *readOnlyPipeline[*http.Request]  // Third request pipeline: read-only
-	ResponseInPipeline  *readOnlyPipeline[*http.Response] // First response pipeline: read-only
-	ResponseModPipeline *modPipeline[*http.Response]      // Second response pipeline: read/write
-	ResponseOutPipeline *readOnlyPipeline[*http.Response] // Third response pipeline: read-only
-	InScopeFunc         InScopeFunc                       // Function to determine request scope
-	Client              *http.Client
-	CertCache           map[string]*tls.Certificate
-	CertMutex           sync.RWMutex
-	RootCA              *x509.Certificate
-	RootKey             *rsa.PrivateKey
+	requestInPipeline   *pipeline.ReadOnlyPipeline[*http.Request]  // First request pipeline: read-only
+	requestModPipeline  *pipeline.ModPipeline[*http.Request]       // Second request pipeline: read/write
+	requestOutPipeline  *pipeline.ReadOnlyPipeline[*http.Request]  // Third request pipeline: read-only
+	responseInPipeline  *pipeline.ReadOnlyPipeline[*http.Response] // First response pipeline: read-only
+	responseModPipeline *pipeline.ModPipeline[*http.Response]      // Second response pipeline: read/write
+	responseOutPipeline *pipeline.ReadOnlyPipeline[*http.Response] // Third response pipeline: read-only
+
+	inScopeFuncMutex sync.RWMutex // Function to determine request scope
+	inScopeFunc      InScopeFunc  // Function to determine request scope
+
+	Client *http.Client
+
+	CertCache map[string]*tls.Certificate
+	CertMutex sync.RWMutex
+	RootCA    *x509.Certificate
+	RootKey   *rsa.PrivateKey
 }
 
 // NewProxy creates a new proxy instance with empty pipelines and default in-scope function
 func NewProxy(rootCA *x509.Certificate, rootKey *rsa.PrivateKey) *Proxy {
 	p := &Proxy{
-		RequestInPipeline:   newReadOnlyPipeline[*http.Request](nil),
-		RequestModPipeline:  newModPipeline[*http.Request](nil),
-		RequestOutPipeline:  newReadOnlyPipeline[*http.Request](nil),
-		ResponseInPipeline:  newReadOnlyPipeline[*http.Response](nil),
-		ResponseModPipeline: newModPipeline[*http.Response](nil),
-		ResponseOutPipeline: newReadOnlyPipeline[*http.Response](nil),
-		InScopeFunc:         func(*http.Request) bool { return true }, // Default: all requests in scope
+		requestInPipeline:   pipeline.NewReadOnlyPipeline[*http.Request](nil),
+		requestModPipeline:  pipeline.NewModPipeline[*http.Request](nil),
+		requestOutPipeline:  pipeline.NewReadOnlyPipeline[*http.Request](nil),
+		responseInPipeline:  pipeline.NewReadOnlyPipeline[*http.Response](nil),
+		responseModPipeline: pipeline.NewModPipeline[*http.Response](nil),
+		responseOutPipeline: pipeline.NewReadOnlyPipeline[*http.Response](nil),
+
+		inScopeFuncMutex: sync.RWMutex{},
+		inScopeFunc:      func(*http.Request) bool { return true }, // Default: all requests in scope
+
 		Client: &http.Client{
 			Transport: &http.Transport{
 				Proxy: http.ProxyFromEnvironment,
@@ -59,6 +64,7 @@ func NewProxy(rootCA *x509.Certificate, rootKey *rsa.PrivateKey) *Proxy {
 				},
 			},
 		},
+
 		CertCache: make(map[string]*tls.Certificate),
 		CertMutex: sync.RWMutex{},
 		RootCA:    rootCA,
@@ -72,13 +78,17 @@ func NewProxy(rootCA *x509.Certificate, rootKey *rsa.PrivateKey) *Proxy {
 func (p *Proxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	// Generate UUID v4 and add to request context
 	id := uuid.New().String() // UUID v4
-	ctx := context.WithValue(req.Context(), requestIDKey, id)
-	req = req.WithContext(ctx)
+	req = ids.SetRequestID(req, id)
 
 	var finalReq *http.Request
 	var err error
 
-	if p.InScopeFunc(req) {
+	var inScope InScopeFunc
+	p.inScopeFuncMutex.RLock()
+	inScope = p.inScopeFunc
+	p.inScopeFuncMutex.RUnlock()
+
+	if inScope(req) {
 		finalReq, err = p.processRequestPipelines(req)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("Request pipeline error: %v", err), http.StatusInternalServerError)
@@ -99,15 +109,13 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 	defer resp.Body.Close()
 
-	var finalResp *http.Response
-	if p.InScopeFunc(req) {
+	finalResp := resp
+	if inScope(req) {
 		finalResp, err = p.processResponsePipelines(resp)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("Response pipeline error: %v", err), http.StatusInternalServerError)
 			return
 		}
-	} else {
-		finalResp = cloneResponse(resp)
 	}
 
 	for key, values := range finalResp.Header {
@@ -124,8 +132,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 func (p *Proxy) HandleConnect(w http.ResponseWriter, req *http.Request) {
 	// Generate UUID v4 for the initial CONNECT request (optional, for tracking the tunnel itself)
 	id := uuid.New().String()
-	ctx := context.WithValue(req.Context(), requestIDKey, id)
-	req = req.WithContext(ctx)
+	req = ids.SetRequestID(req, id)
 
 	destConn, err := net.Dial("tcp", req.URL.Host)
 	if err != nil {
@@ -183,7 +190,7 @@ func (p *Proxy) HandleConnect(w http.ResponseWriter, req *http.Request) {
 
 			// Generate a new UUID v4 for each tunneled request
 			reqID := uuid.New().String()
-			httpReq = httpReq.WithContext(context.WithValue(httpReq.Context(), requestIDKey, reqID))
+			httpReq = ids.SetRequestID(httpReq, reqID)
 
 			if websockets.IsWebSocketRequest(httpReq) {
 				log.Printf("WebSocket connection detected for %s, passing through", httpReq.URL)
@@ -207,8 +214,13 @@ func (p *Proxy) HandleConnect(w http.ResponseWriter, req *http.Request) {
 				return
 			}
 
+			var inScope InScopeFunc
+			p.inScopeFuncMutex.RLock()
+			inScope = p.inScopeFunc
+			p.inScopeFuncMutex.RUnlock()
+
 			finalReq := httpReq
-			if p.InScopeFunc(httpReq) {
+			if inScope(httpReq) {
 				finalReq, err = p.processRequestPipelines(httpReq)
 				if err != nil {
 					log.Printf("Request pipeline error: %v", err)
@@ -230,7 +242,7 @@ func (p *Proxy) HandleConnect(w http.ResponseWriter, req *http.Request) {
 			defer resp.Body.Close()
 
 			finalResp := resp
-			if p.InScopeFunc(httpReq) {
+			if inScope(httpReq) {
 				finalResp, err = p.processResponsePipelines(resp)
 				if err != nil {
 					log.Printf("Response pipeline error: %v", err)
@@ -250,58 +262,64 @@ func (p *Proxy) HandleConnect(w http.ResponseWriter, req *http.Request) {
 
 // processRequestPipelines processes the request through all three request pipelines
 func (p *Proxy) processRequestPipelines(req *http.Request) (*http.Request, error) {
-	currentReq := cloneRequest(req)
+	currentReq := httpbytes.CloneRequest(req)
 
-	p.RequestInPipeline.runPipeline(currentReq)
+	p.requestInPipeline.RunPipeline(currentReq)
 
-	currentReq, err := p.RequestModPipeline.runPipeline(currentReq)
+	currentReq, err := p.requestModPipeline.RunPipeline(currentReq)
 	if err != nil {
 		return nil, err
 	}
 
-	p.RequestOutPipeline.runPipeline(currentReq)
+	p.requestOutPipeline.RunPipeline(currentReq)
 
 	return currentReq, nil
 }
 
 // processResponsePipelines processes the response through all three response pipelines
 func (p *Proxy) processResponsePipelines(resp *http.Response) (*http.Response, error) {
-	currentResp := cloneResponse(resp)
+	currentResp := httpbytes.CloneResponse(resp)
 
-	p.ResponseInPipeline.runPipeline(currentResp)
+	p.responseInPipeline.RunPipeline(currentResp)
 
-	currentResp, err := p.ResponseModPipeline.runPipeline(currentResp)
+	currentResp, err := p.responseModPipeline.RunPipeline(currentResp)
 	if err != nil {
 		return nil, err
 	}
 
-	p.ResponseOutPipeline.runPipeline(currentResp)
+	p.responseOutPipeline.RunPipeline(currentResp)
 
 	return currentResp, nil
 }
 
-func (p *Proxy) SetRequestInHooks(hooks []ReadOnlyHook[*http.Request]) {
-	p.RequestInPipeline.setHooks(hooks)
+func (p *Proxy) SetRequestInHooks(hooks []pipeline.ReadOnlyHook[*http.Request]) {
+	p.requestInPipeline.SetHooks(hooks)
 }
 
-func (p *Proxy) SetRequestModHooks(hooks []ModHook[*http.Request]) {
-	p.RequestModPipeline.setHooks(hooks)
+func (p *Proxy) SetRequestModHooks(hooks []pipeline.ModHook[*http.Request]) {
+	p.requestModPipeline.SetHooks(hooks)
 }
 
-func (p *Proxy) SetRequestOutHooks(hooks []ReadOnlyHook[*http.Request]) {
-	p.RequestOutPipeline.setHooks(hooks)
+func (p *Proxy) SetRequestOutHooks(hooks []pipeline.ReadOnlyHook[*http.Request]) {
+	p.requestOutPipeline.SetHooks(hooks)
 }
 
-func (p *Proxy) SetResponseInHooks(hooks []ReadOnlyHook[*http.Response]) {
-	p.ResponseInPipeline.setHooks(hooks)
+func (p *Proxy) SetResponseInHooks(hooks []pipeline.ReadOnlyHook[*http.Response]) {
+	p.responseInPipeline.SetHooks(hooks)
 }
 
-func (p *Proxy) SetResponseModHooks(hooks []ModHook[*http.Response]) {
-	p.ResponseModPipeline.setHooks(hooks)
+func (p *Proxy) SetResponseModHooks(hooks []pipeline.ModHook[*http.Response]) {
+	p.responseModPipeline.SetHooks(hooks)
 }
 
-func (p *Proxy) SetResponseOutHooks(hooks []ReadOnlyHook[*http.Response]) {
-	p.ResponseOutPipeline.setHooks(hooks)
+func (p *Proxy) SetResponseOutHooks(hooks []pipeline.ReadOnlyHook[*http.Response]) {
+	p.responseOutPipeline.SetHooks(hooks)
+}
+
+func (p *Proxy) SetScope(scope InScopeFunc) {
+	p.inScopeFuncMutex.Lock()
+	p.inScopeFunc = scope
+	p.inScopeFuncMutex.Unlock()
 }
 
 // generateCert generates a certificate for a given host, caching it
@@ -323,29 +341,6 @@ func (p *Proxy) generateCert(host string) (*tls.Certificate, error) {
 	p.CertMutex.Unlock()
 
 	return cert, nil
-}
-
-// GetRequestID retrieves the request ID from the request's context
-func GetRequestID(req *http.Request) string {
-	if id, ok := req.Context().Value(requestIDKey).(string); ok {
-		return id
-	}
-	return "" // Return empty string if no ID found
-}
-
-func SetRequestID(req *http.Request, id string) *http.Request {
-	ctx := context.WithValue(req.Context(), requestIDKey, id)
-	return req.WithContext(ctx)
-}
-
-// GetResponseID retrieves the request ID from the response's request context
-func GetResponseID(resp *http.Response) string {
-	if resp.Request != nil {
-		if id, ok := resp.Request.Context().Value(requestIDKey).(string); ok {
-			return id
-		}
-	}
-	return "" // Return empty string if no ID found or no request
 }
 
 func getRootCAPool(rootCA *x509.Certificate) *x509.CertPool {

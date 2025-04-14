@@ -8,7 +8,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/artilugio0/proxy-vibes/internal/proxy"
+	"github.com/artilugio0/proxy-vibes/internal/ids"
+	"github.com/artilugio0/proxy-vibes/internal/pipeline"
 )
 
 // RawRequestBytes generates the raw HTTP bytes for a request
@@ -77,7 +78,7 @@ func LogRawRequest(req *http.Request) error {
 	if err != nil {
 		return err
 	}
-	id := proxy.GetRequestID(req)
+	id := ids.GetRequestID(req)
 	if id == "" {
 		id = "unknown"
 	}
@@ -93,7 +94,7 @@ func LogRawResponse(resp *http.Response) error {
 	if err != nil {
 		return err
 	}
-	id := proxy.GetResponseID(resp)
+	id := ids.GetResponseID(resp)
 	if id == "" {
 		id = "unknown"
 	}
@@ -104,7 +105,7 @@ func LogRawResponse(resp *http.Response) error {
 }
 
 // NewFileSaveHooks returns request and response hooks that save to files in the specified directory
-func NewFileSaveHooks(dir string) (proxy.ReadOnlyHook[*http.Request], proxy.ReadOnlyHook[*http.Response]) {
+func NewFileSaveHooks(dir string) (pipeline.ReadOnlyHook[*http.Request], pipeline.ReadOnlyHook[*http.Response]) {
 	if dir == "" {
 		dir = "." // Default to current directory
 	}
@@ -114,7 +115,7 @@ func NewFileSaveHooks(dir string) (proxy.ReadOnlyHook[*http.Request], proxy.Read
 		if err != nil {
 			return err
 		}
-		id := proxy.GetRequestID(req)
+		id := ids.GetRequestID(req)
 		if id == "" {
 			id = "unknown"
 		}
@@ -127,7 +128,7 @@ func NewFileSaveHooks(dir string) (proxy.ReadOnlyHook[*http.Request], proxy.Read
 		if err != nil {
 			return err
 		}
-		id := proxy.GetResponseID(resp)
+		id := ids.GetResponseID(resp)
 		if id == "" {
 			id = "unknown"
 		}

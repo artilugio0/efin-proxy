@@ -1,37 +1,39 @@
-package proxy
+package pipeline
 
 import (
 	"fmt"
 	"log"
 	"net/http"
 	"sync"
+
+	"github.com/artilugio0/proxy-vibes/internal/httpbytes"
 )
 
 // ReadOnlyHook defines a hook that processes an item without modifying it.
-type ReadOnlyHook[I pipelineItem] func(I) error
+type ReadOnlyHook[I PipelineItem] func(I) error
 
 // ModHook defines a hook that can modify an item and return it.
-type ModHook[I pipelineItem] func(I) (I, error)
+type ModHook[I PipelineItem] func(I) (I, error)
 
-// pipelineItem constrains the types that can be processed by the pipelines.
-type pipelineItem interface{ *http.Request | *http.Response }
+// PipelineItem constrains the types that can be processed by the pipelines.
+type PipelineItem interface{ *http.Request | *http.Response }
 
 // roQueueItem represents an item in the read-only pipeline's processing queue.
-type roQueueItem[I pipelineItem] struct {
+type roQueueItem[I PipelineItem] struct {
 	req   I
 	hooks []ReadOnlyHook[I]
 }
 
-// readOnlyPipeline manages a pipeline of read-only hooks processed asynchronously.
-type readOnlyPipeline[I pipelineItem] struct {
+// ReadOnlyPipeline manages a pipeline of read-only hooks processed asynchronously.
+type ReadOnlyPipeline[I PipelineItem] struct {
 	hooks      []ReadOnlyHook[I]
 	hooksMutex sync.RWMutex
 	queue      chan roQueueItem[I]
 }
 
-// newReadOnlyPipeline initializes a new read-only pipeline with the given hooks.
-func newReadOnlyPipeline[I pipelineItem](hooks []ReadOnlyHook[I]) *readOnlyPipeline[I] {
-	pipeline := &readOnlyPipeline[I]{
+// NewReadOnlyPipeline initializes a new read-only pipeline with the given hooks.
+func NewReadOnlyPipeline[I PipelineItem](hooks []ReadOnlyHook[I]) *ReadOnlyPipeline[I] {
+	pipeline := &ReadOnlyPipeline[I]{
 		hooks:      append([]ReadOnlyHook[I]{}, hooks...), // Defensive copy of hooks
 		hooksMutex: sync.RWMutex{},
 		queue:      make(chan roQueueItem[I], 1000), // Buffer size of 1000
@@ -42,14 +44,14 @@ func newReadOnlyPipeline[I pipelineItem](hooks []ReadOnlyHook[I]) *readOnlyPipel
 }
 
 // processPipelineQueue runs in a goroutine to process items from the queue.
-func (p *readOnlyPipeline[I]) processPipelineQueue() {
+func (p *ReadOnlyPipeline[I]) processPipelineQueue() {
 	for item := range p.queue {
 		p.processItem(item)
 	}
 }
 
 // processItem processes a single pipeline item by applying all hooks concurrently.
-func (p *readOnlyPipeline[I]) processItem(item roQueueItem[I]) {
+func (p *ReadOnlyPipeline[I]) processItem(item roQueueItem[I]) {
 	hooks := item.hooks
 	req := item.req
 
@@ -82,8 +84,8 @@ func (p *readOnlyPipeline[I]) processItem(item roQueueItem[I]) {
 	}
 }
 
-// runPipeline queues an item for processing in the read-only pipeline.
-func (p *readOnlyPipeline[I]) runPipeline(r I) error {
+// RunPipeline queues an item for processing in the read-only pipeline.
+func (p *ReadOnlyPipeline[I]) RunPipeline(r I) error {
 	p.hooksMutex.RLock()
 	hooks := p.hooks
 	p.hooksMutex.RUnlock()
@@ -99,29 +101,29 @@ func (p *readOnlyPipeline[I]) runPipeline(r I) error {
 	return nil
 }
 
-// setHooks updates the hooks in the read-only pipeline.
-func (p *readOnlyPipeline[I]) setHooks(hooks []ReadOnlyHook[I]) {
+// SetHooks updates the hooks in the read-only pipeline.
+func (p *ReadOnlyPipeline[I]) SetHooks(hooks []ReadOnlyHook[I]) {
 	p.hooksMutex.Lock()
 	p.hooks = append([]ReadOnlyHook[I]{}, hooks...) // Defensive copy
 	p.hooksMutex.Unlock()
 }
 
-// modPipeline manages a pipeline of modification hooks processed synchronously.
-type modPipeline[I pipelineItem] struct {
+// ModPipeline manages a pipeline of modification hooks processed synchronously.
+type ModPipeline[I PipelineItem] struct {
 	hooks      []ModHook[I]
 	hooksMutex sync.RWMutex
 }
 
-// newModPipeline initializes a new modification pipeline with the given hooks.
-func newModPipeline[I pipelineItem](hooks []ModHook[I]) *modPipeline[I] {
-	return &modPipeline[I]{
+// NewModPipeline initializes a new modification pipeline with the given hooks.
+func NewModPipeline[I PipelineItem](hooks []ModHook[I]) *ModPipeline[I] {
+	return &ModPipeline[I]{
 		hooks:      append([]ModHook[I]{}, hooks...), // Defensive copy
 		hooksMutex: sync.RWMutex{},
 	}
 }
 
-// runPipeline applies all modification hooks sequentially to the item.
-func (p *modPipeline[I]) runPipeline(r I) (I, error) {
+// RunPipeline applies all modification hooks sequentially to the item.
+func (p *ModPipeline[I]) RunPipeline(r I) (I, error) {
 	p.hooksMutex.RLock()
 	hooks := p.hooks
 	p.hooksMutex.RUnlock()
@@ -136,13 +138,13 @@ func (p *modPipeline[I]) runPipeline(r I) (I, error) {
 		// Handle body reset or cloning based on type
 		switch v := any(r).(type) {
 		case *http.Request:
-			if body, ok := v.Body.(*BodyWrapper); ok {
+			if body, ok := v.Body.(*httpbytes.BodyWrapper); ok {
 				body.Reset()
 			} else {
 				r = clone(r)
 			}
 		case *http.Response:
-			if body, ok := v.Body.(*BodyWrapper); ok {
+			if body, ok := v.Body.(*httpbytes.BodyWrapper); ok {
 				body.Reset()
 			} else {
 				r = clone(r)
@@ -152,20 +154,20 @@ func (p *modPipeline[I]) runPipeline(r I) (I, error) {
 	return r, nil
 }
 
-// setHooks updates the hooks in the modification pipeline.
-func (p *modPipeline[I]) setHooks(hooks []ModHook[I]) {
+// SetHooks updates the hooks in the modification pipeline.
+func (p *ModPipeline[I]) SetHooks(hooks []ModHook[I]) {
 	p.hooksMutex.Lock()
 	p.hooks = append([]ModHook[I]{}, hooks...) // Defensive copy
 	p.hooksMutex.Unlock()
 }
 
 // clone creates a copy of the pipeline item to prevent unintended modifications.
-func clone[I pipelineItem](r I) I {
+func clone[I PipelineItem](r I) I {
 	switch v := any(r).(type) {
 	case *http.Request:
-		return any(cloneRequest(v)).(I)
+		return any(httpbytes.CloneRequest(v)).(I)
 	case *http.Response:
-		return any(cloneResponse(v)).(I)
+		return any(httpbytes.CloneResponse(v)).(I)
 	default:
 		panic(fmt.Sprintf("Error: invalid type in clone function: %T", r))
 	}

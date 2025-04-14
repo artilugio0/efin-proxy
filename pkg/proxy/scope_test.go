@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/artilugio0/proxy-vibes/internal/certs"
+	"github.com/artilugio0/proxy-vibes/internal/pipeline"
 )
 
 func TestScopeServeHTTP(t *testing.T) {
@@ -49,43 +50,43 @@ func TestScopeServeHTTP(t *testing.T) {
 			inExecuted := false
 			outExecuted := false
 
-			p.RequestInPipeline = newReadOnlyPipeline([]ReadOnlyHook[*http.Request]{
+			p.requestInPipeline = pipeline.NewReadOnlyPipeline([]pipeline.ReadOnlyHook[*http.Request]{
 				func(req *http.Request) error {
 					inExecuted = true
 					return nil
 				},
 			})
-			p.RequestModPipeline = newModPipeline([]ModHook[*http.Request]{
+			p.requestModPipeline = pipeline.NewModPipeline([]pipeline.ModHook[*http.Request]{
 				func(req *http.Request) (*http.Request, error) {
 					req.Header.Set("X-Mod", "mod1")
 					return req, nil
 				},
 			})
-			p.RequestOutPipeline = newReadOnlyPipeline([]ReadOnlyHook[*http.Request]{
+			p.requestOutPipeline = pipeline.NewReadOnlyPipeline([]pipeline.ReadOnlyHook[*http.Request]{
 				func(req *http.Request) error {
 					outExecuted = true
 					return nil
 				},
 			})
-			p.ResponseInPipeline = newReadOnlyPipeline([]ReadOnlyHook[*http.Response]{
+			p.responseInPipeline = pipeline.NewReadOnlyPipeline([]pipeline.ReadOnlyHook[*http.Response]{
 				func(resp *http.Response) error {
 					inExecuted = true
 					return nil
 				},
 			})
-			p.ResponseModPipeline = newModPipeline([]ModHook[*http.Response]{
+			p.responseModPipeline = pipeline.NewModPipeline([]pipeline.ModHook[*http.Response]{
 				func(resp *http.Response) (*http.Response, error) {
 					resp.Header.Set("X-Mod", "mod1")
 					return resp, nil
 				},
 			})
-			p.ResponseOutPipeline = newReadOnlyPipeline([]ReadOnlyHook[*http.Response]{
+			p.responseOutPipeline = pipeline.NewReadOnlyPipeline([]pipeline.ReadOnlyHook[*http.Response]{
 				func(resp *http.Response) error {
 					outExecuted = true
 					return nil
 				},
 			})
-			p.InScopeFunc = func(*http.Request) bool { return !tt.isOutOfScope }
+			p.SetScope(func(*http.Request) bool { return !tt.isOutOfScope })
 
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("X-Original", "original")
@@ -172,43 +173,43 @@ func TestScopeHandleConnect(t *testing.T) {
 			inExecuted := false
 			outExecuted := false
 
-			p.RequestInPipeline = newReadOnlyPipeline([]ReadOnlyHook[*http.Request]{
+			p.requestInPipeline = pipeline.NewReadOnlyPipeline([]pipeline.ReadOnlyHook[*http.Request]{
 				func(req *http.Request) error {
 					inExecuted = true
 					return nil
 				},
 			})
-			p.RequestModPipeline = newModPipeline([]ModHook[*http.Request]{
+			p.requestModPipeline = pipeline.NewModPipeline([]pipeline.ModHook[*http.Request]{
 				func(req *http.Request) (*http.Request, error) {
 					req.Header.Set("X-Mod", "mod1")
 					return req, nil
 				},
 			})
-			p.RequestOutPipeline = newReadOnlyPipeline([]ReadOnlyHook[*http.Request]{
+			p.requestOutPipeline = pipeline.NewReadOnlyPipeline([]pipeline.ReadOnlyHook[*http.Request]{
 				func(req *http.Request) error {
 					outExecuted = true
 					return nil
 				},
 			})
-			p.ResponseInPipeline = newReadOnlyPipeline([]ReadOnlyHook[*http.Response]{
+			p.responseInPipeline = pipeline.NewReadOnlyPipeline([]pipeline.ReadOnlyHook[*http.Response]{
 				func(resp *http.Response) error {
 					inExecuted = true
 					return nil
 				},
 			})
-			p.ResponseModPipeline = newModPipeline([]ModHook[*http.Response]{
+			p.responseModPipeline = pipeline.NewModPipeline([]pipeline.ModHook[*http.Response]{
 				func(resp *http.Response) (*http.Response, error) {
 					resp.Header.Set("X-Mod", "mod1")
 					return resp, nil
 				},
 			})
-			p.ResponseOutPipeline = newReadOnlyPipeline([]ReadOnlyHook[*http.Response]{
+			p.responseOutPipeline = pipeline.NewReadOnlyPipeline([]pipeline.ReadOnlyHook[*http.Response]{
 				func(resp *http.Response) error {
 					outExecuted = true
 					return nil
 				},
 			})
-			p.InScopeFunc = func(*http.Request) bool { return !tt.isOutOfScope }
+			p.SetScope(func(*http.Request) bool { return !tt.isOutOfScope })
 
 			serverCert, err := certs.GenerateCert([]string{"localhost", "127.0.0.1"}, rootCA, rootKey)
 			if err != nil {

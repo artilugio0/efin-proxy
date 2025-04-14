@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/artilugio0/proxy-vibes/internal/proxy"
+	"github.com/artilugio0/proxy-vibes/internal/ids"
 )
 
 func TestRawRequestBytes(t *testing.T) {
@@ -111,7 +111,7 @@ func TestLogRawRequest(t *testing.T) {
 	os.Stdout = w
 
 	req := httptest.NewRequest("GET", "https://test.host.com/path", nil)
-	req = proxy.SetRequestID(req, "test-request-id")
+	req = ids.SetRequestID(req, "test-request-id")
 	LogRawRequest(req)
 
 	w.Close()
@@ -141,7 +141,7 @@ func TestLogRawResponse(t *testing.T) {
 		Body:       io.NopCloser(strings.NewReader("Success")),
 	}
 	resp.Request = httptest.NewRequest("GET", "https://test.host.com", nil)
-	resp.Request = proxy.SetRequestID(resp.Request, "test-response-id")
+	resp.Request = ids.SetRequestID(resp.Request, "test-response-id")
 	LogRawResponse(resp)
 
 	w.Close()
@@ -198,7 +198,7 @@ func TestSaveHooks(t *testing.T) {
 
 			// Create and save request
 			req := httptest.NewRequest("GET", "https://test.host.com/path", nil)
-			req = proxy.SetRequestID(req, "test-request-id")
+			req = ids.SetRequestID(req, "test-request-id")
 			if err := saveRequest(req); err != nil {
 				t.Errorf("saveRequest() error = %v", err)
 			}
@@ -211,7 +211,7 @@ func TestSaveHooks(t *testing.T) {
 				Body:       io.NopCloser(strings.NewReader("Success")),
 			}
 			resp.Request = httptest.NewRequest("GET", "https://test.host.com", nil)
-			resp.Request = proxy.SetRequestID(resp.Request, "test-response-id")
+			resp.Request = ids.SetRequestID(resp.Request, "test-response-id")
 			if err := saveResponse(resp); err != nil {
 				t.Errorf("saveResponse() error = %v", err)
 			}

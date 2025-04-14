@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/artilugio0/proxy-vibes/internal/certs"
+	"github.com/artilugio0/proxy-vibes/internal/pipeline"
 	"github.com/gorilla/websocket"
 )
 
@@ -32,7 +33,7 @@ func TestHandleConnectRegularHTTPRequest(t *testing.T) {
 	}
 
 	p := NewProxy(rootCA, rootKey)
-	p.SetRequestModHooks([]ModHook[*http.Request]{
+	p.SetRequestModHooks([]pipeline.ModHook[*http.Request]{
 		func(req *http.Request) (*http.Request, error) {
 			req.Header.Set("X-Modified", "true")
 			return req, nil
@@ -104,7 +105,7 @@ func TestHandleConnectWebSocketRequest(t *testing.T) {
 	}
 
 	p := NewProxy(rootCA, rootKey)
-	p.SetRequestModHooks([]ModHook[*http.Request]{
+	p.SetRequestModHooks([]pipeline.ModHook[*http.Request]{
 		func(req *http.Request) (*http.Request, error) {
 			req.Header.Set("X-Modified", "true")
 			return req, nil

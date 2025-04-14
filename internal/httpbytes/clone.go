@@ -1,4 +1,4 @@
-package proxy
+package httpbytes
 
 import (
 	"bytes"
@@ -47,8 +47,8 @@ func (b *BodyWrapper) Reset() {
 	b.reader.Seek(0, io.SeekStart)
 }
 
-// cloneRequest creates a deep copy of an HTTP request
-func cloneRequest(req *http.Request) *http.Request {
+// CloneRequest creates a deep copy of an HTTP request
+func CloneRequest(req *http.Request) *http.Request {
 	r := new(http.Request)
 	*r = *req
 
@@ -77,8 +77,8 @@ func cloneRequest(req *http.Request) *http.Request {
 	return r
 }
 
-// cloneResponse creates a deep copy of an HTTP response
-func cloneResponse(resp *http.Response) *http.Response {
+// CloneResponse creates a deep copy of an HTTP response
+func CloneResponse(resp *http.Response) *http.Response {
 	r := new(http.Response)
 	*r = *resp
 

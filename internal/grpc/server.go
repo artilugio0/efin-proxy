@@ -1,11 +1,13 @@
 package grpc
 
 import (
+	"fmt"
 	"io"
 	"log"
 	"net"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/artilugio0/proxy-vibes/internal/grpc/proto"
 	"google.golang.org/grpc"
@@ -139,6 +141,10 @@ func (s *Server) RequestMod(stream proto.ProxyService_RequestModServer) error {
 	}
 
 	s.requestModClientsMutex.Lock()
+	if _, exists := s.requestModClients[clientName]; exists {
+		s.requestModClientsMutex.Unlock()
+		return fmt.Errorf("client already registered")
+	}
 	s.requestModClients[clientName] = rChans
 	s.requestModClientsMutex.Unlock()
 
@@ -193,6 +199,10 @@ func (s *Server) RequestIn(register *proto.Register, stream proto.ProxyService_R
 	}
 
 	s.requestInClientsMutex.Lock()
+	if _, exists := s.requestInClients[clientName]; exists {
+		s.requestInClientsMutex.Unlock()
+		return fmt.Errorf("client already registered")
+	}
 	s.requestInClients[clientName] = rChans
 	s.requestInClientsMutex.Unlock()
 
@@ -225,6 +235,10 @@ func (s *Server) RequestOut(register *proto.Register, stream proto.ProxyService_
 	}
 
 	s.requestOutClientsMutex.Lock()
+	if _, exists := s.requestOutClients[clientName]; exists {
+		s.requestOutClientsMutex.Unlock()
+		return fmt.Errorf("client already registered")
+	}
 	s.requestOutClients[clientName] = rChans
 	s.requestOutClientsMutex.Unlock()
 
@@ -260,7 +274,7 @@ func (s *Server) ResponseMod(stream proto.ProxyService_ResponseModServer) error 
 		log.Println("Response mod stream: client did not send register message")
 		return nil
 	}
-	log.Printf("ResponseMod client register Client connected: %s", registerMsg.Register.Name)
+	log.Printf("ResponseMod Client connected: %s", registerMsg.Register.Name)
 
 	originalResponses := make(chan *http.Response, 1000)
 	modifiedResponses := make(chan *http.Response)
@@ -273,6 +287,10 @@ func (s *Server) ResponseMod(stream proto.ProxyService_ResponseModServer) error 
 	}
 
 	s.responseModClientsMutex.Lock()
+	if _, exists := s.responseModClients[clientName]; exists {
+		s.responseModClientsMutex.Unlock()
+		return fmt.Errorf("client already registered")
+	}
 	s.responseModClients[clientName] = rChans
 	s.responseModClientsMutex.Unlock()
 
@@ -327,6 +345,10 @@ func (s *Server) ResponseIn(register *proto.Register, stream proto.ProxyService_
 	}
 
 	s.responseInClientsMutex.Lock()
+	if _, exists := s.responseInClients[clientName]; exists {
+		s.responseInClientsMutex.Unlock()
+		return fmt.Errorf("client already registered")
+	}
 	s.responseInClients[clientName] = rChans
 	s.responseInClientsMutex.Unlock()
 
@@ -359,6 +381,10 @@ func (s *Server) ResponseOut(register *proto.Register, stream proto.ProxyService
 	}
 
 	s.responseOutClientsMutex.Lock()
+	if _, exists := s.responseOutClients[clientName]; exists {
+		s.responseOutClientsMutex.Unlock()
+		return fmt.Errorf("client already registered")
+	}
 	s.responseOutClients[clientName] = rChans
 	s.responseOutClientsMutex.Unlock()
 
@@ -393,11 +419,12 @@ func (s *Server) RequestInHook(r *http.Request) error {
 			case client.originalRequests <- r:
 				break SELECT
 			default:
-				// TODO: close originalRequests channel. (handle race conditions to not write to a closed channel)
 				log.Printf("Queue full, client '%s' removed", client.name)
 				s.requestInClientsMutex.Lock()
 				delete(s.requestInClients, client.name)
 				s.requestInClientsMutex.Unlock()
+
+				asyncCloseChannel(client.originalRequests)
 			}
 
 			if !<-client.ok {
@@ -405,6 +432,8 @@ func (s *Server) RequestInHook(r *http.Request) error {
 				s.requestInClientsMutex.Lock()
 				delete(s.requestInClients, client.name)
 				s.requestInClientsMutex.Unlock()
+
+				asyncCloseChannel(client.originalRequests)
 			}
 		}(client)
 	}
@@ -428,11 +457,12 @@ func (s *Server) RequestOutHook(r *http.Request) error {
 			case client.originalRequests <- r:
 				break SELECT
 			default:
-				// TODO: close originalRequests channel. (handle race conditions to not write to a closed channel)
 				log.Printf("Queue full, client '%s' removed", client.name)
 				s.requestOutClientsMutex.Lock()
 				delete(s.requestOutClients, client.name)
 				s.requestOutClientsMutex.Unlock()
+
+				asyncCloseChannel(client.originalRequests)
 			}
 
 			if !<-client.ok {
@@ -440,6 +470,8 @@ func (s *Server) RequestOutHook(r *http.Request) error {
 				s.requestOutClientsMutex.Lock()
 				delete(s.requestOutClients, client.name)
 				s.requestOutClientsMutex.Unlock()
+
+				asyncCloseChannel(client.originalRequests)
 			}
 		}(client)
 	}
@@ -463,21 +495,23 @@ FOR:
 		case client.originalRequests <- r:
 			break SELECT
 		default:
-			// TODO: close originalRequests channel. (handle race conditions to not write to a closed channel)
 			log.Printf("Queue full, client '%s' removed", client.name)
 			s.requestModClientsMutex.Lock()
 			delete(s.requestModClients, client.name)
 			s.requestModClientsMutex.Unlock()
 			continue FOR
+
+			asyncCloseChannel(client.originalRequests)
 		}
 
 		r := <-client.modifiedRequests
 		if r == nil {
-			// TODO: close originalRequests channel. (handle race conditions to not write to a closed channel)
 			log.Printf("Empty response, client '%s' removed", client.name)
 			s.requestModClientsMutex.Lock()
 			delete(s.requestModClients, client.name)
 			s.requestModClientsMutex.Unlock()
+
+			asyncCloseChannel(client.originalRequests)
 		}
 	}
 
@@ -500,11 +534,12 @@ func (s *Server) ResponseInHook(r *http.Response) error {
 			case client.originalResponses <- r:
 				break SELECT
 			default:
-				// TODO: close originalResponses channel. (handle race conditions to not write to a closed channel)
 				log.Printf("Queue full, client '%s' removed", client.name)
 				s.responseInClientsMutex.Lock()
 				delete(s.responseInClients, client.name)
 				s.responseInClientsMutex.Unlock()
+
+				asyncCloseChannel(client.originalResponses)
 			}
 
 			if !<-client.ok {
@@ -512,6 +547,8 @@ func (s *Server) ResponseInHook(r *http.Response) error {
 				s.responseInClientsMutex.Lock()
 				delete(s.responseInClients, client.name)
 				s.responseInClientsMutex.Unlock()
+
+				asyncCloseChannel(client.originalResponses)
 			}
 		}(client)
 	}
@@ -535,11 +572,12 @@ func (s *Server) ResponseOutHook(r *http.Response) error {
 			case client.originalResponses <- r:
 				break SELECT
 			default:
-				// TODO: close originalResponses channel. (handle race conditions to not write to a closed channel)
 				log.Printf("Queue full, client '%s' removed", client.name)
 				s.responseOutClientsMutex.Lock()
 				delete(s.responseOutClients, client.name)
 				s.responseOutClientsMutex.Unlock()
+
+				asyncCloseChannel(client.originalResponses)
 			}
 
 			if !<-client.ok {
@@ -547,6 +585,8 @@ func (s *Server) ResponseOutHook(r *http.Response) error {
 				s.responseOutClientsMutex.Lock()
 				delete(s.responseOutClients, client.name)
 				s.responseOutClientsMutex.Unlock()
+
+				asyncCloseChannel(client.originalResponses)
 			}
 		}(client)
 	}
@@ -570,23 +610,33 @@ FOR:
 		case client.originalResponses <- r:
 			break SELECT
 		default:
-			// TODO: close originalResponses channel. (handle race conditions to not write to a closed channel)
 			log.Printf("Queue full, client '%s' removed", client.name)
 			s.responseModClientsMutex.Lock()
 			delete(s.responseModClients, client.name)
 			s.responseModClientsMutex.Unlock()
+
+			asyncCloseChannel(client.originalResponses)
 			continue FOR
 		}
 
 		r := <-client.modifiedResponses
 		if r == nil {
-			// TODO: close originalResponses channel. (handle race conditions to not write to a closed channel)
 			log.Printf("Empty response, client '%s' removed", client.name)
 			s.responseModClientsMutex.Lock()
 			delete(s.responseModClients, client.name)
 			s.responseModClientsMutex.Unlock()
+
+			asyncCloseChannel(client.originalResponses)
 		}
 	}
 
 	return r, nil
+}
+
+func asyncCloseChannel[I any](c chan<- I) {
+	go func() {
+		time.Sleep(60 * time.Second)
+		log.Printf("channel closed")
+		close(c)
+	}()
 }

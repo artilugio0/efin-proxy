@@ -13,6 +13,9 @@ service ProxyService {
   rpc ResponseIn(Register) returns (stream HttpResponse) {}
   rpc ResponseMod(stream ResponseModClientMessage) returns (stream HttpResponse) {}
   rpc ResponseOut(Register) returns (stream HttpResponse) {}
+
+  rpc SetConfig(Config) returns (Null) {}
+  rpc GetConfig(Null) returns (Config) {}
 }
 
 message Header {
@@ -54,3 +57,7 @@ message HttpResponse {
   repeated Header headers = 3;
   bytes body = 4;
 }
+
+message Config {}
+
+message Null {}

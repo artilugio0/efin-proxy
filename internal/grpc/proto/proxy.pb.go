@@ -427,6 +427,78 @@ func (x *HttpResponse) GetBody() []byte {
 	return nil
 }
 
+type Config struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Config) Reset() {
+	*x = Config{}
+	mi := &file_proxy_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Config) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Config) ProtoMessage() {}
+
+func (x *Config) ProtoReflect() protoreflect.Message {
+	mi := &file_proxy_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Config.ProtoReflect.Descriptor instead.
+func (*Config) Descriptor() ([]byte, []int) {
+	return file_proxy_proto_rawDescGZIP(), []int{6}
+}
+
+type Null struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Null) Reset() {
+	*x = Null{}
+	mi := &file_proxy_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Null) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Null) ProtoMessage() {}
+
+func (x *Null) ProtoReflect() protoreflect.Message {
+	mi := &file_proxy_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Null.ProtoReflect.Descriptor instead.
+func (*Null) Descriptor() ([]byte, []int) {
+	return file_proxy_proto_rawDescGZIP(), []int{7}
+}
+
 var File_proxy_proto protoreflect.FileDescriptor
 
 const file_proxy_proto_rawDesc = "" +
@@ -456,7 +528,9 @@ const file_proxy_proto_rawDesc = "" +
 	"\vstatus_code\x18\x02 \x01(\x05R\n" +
 	"statusCode\x12'\n" +
 	"\aheaders\x18\x03 \x03(\v2\r.proxy.HeaderR\aheaders\x12\x12\n" +
-	"\x04body\x18\x04 \x01(\fR\x04body2\xff\x02\n" +
+	"\x04body\x18\x04 \x01(\fR\x04body\"\b\n" +
+	"\x06Config\"\x06\n" +
+	"\x04Null2\xd5\x03\n" +
 	"\fProxyService\x124\n" +
 	"\tRequestIn\x12\x0f.proxy.Register\x1a\x12.proxy.HttpRequest\"\x000\x01\x12F\n" +
 	"\n" +
@@ -466,7 +540,9 @@ const file_proxy_proto_rawDesc = "" +
 	"\n" +
 	"ResponseIn\x12\x0f.proxy.Register\x1a\x13.proxy.HttpResponse\"\x000\x01\x12I\n" +
 	"\vResponseMod\x12\x1f.proxy.ResponseModClientMessage\x1a\x13.proxy.HttpResponse\"\x00(\x010\x01\x127\n" +
-	"\vResponseOut\x12\x0f.proxy.Register\x1a\x13.proxy.HttpResponse\"\x000\x01B7Z5github.com/artilugio0/proxy-vibes/internal/grpc/protob\x06proto3"
+	"\vResponseOut\x12\x0f.proxy.Register\x1a\x13.proxy.HttpResponse\"\x000\x01\x12)\n" +
+	"\tSetConfig\x12\r.proxy.Config\x1a\v.proxy.Null\"\x00\x12)\n" +
+	"\tGetConfig\x12\v.proxy.Null\x1a\r.proxy.Config\"\x00B7Z5github.com/artilugio0/proxy-vibes/internal/grpc/protob\x06proto3"
 
 var (
 	file_proxy_proto_rawDescOnce sync.Once
@@ -480,7 +556,7 @@ func file_proxy_proto_rawDescGZIP() []byte {
 	return file_proxy_proto_rawDescData
 }
 
-var file_proxy_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
+var file_proxy_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
 var file_proxy_proto_goTypes = []any{
 	(*Header)(nil),                   // 0: proxy.Header
 	(*RequestModClientMessage)(nil),  // 1: proxy.RequestModClientMessage
@@ -488,6 +564,8 @@ var file_proxy_proto_goTypes = []any{
 	(*Register)(nil),                 // 3: proxy.Register
 	(*HttpRequest)(nil),              // 4: proxy.HttpRequest
 	(*HttpResponse)(nil),             // 5: proxy.HttpResponse
+	(*Config)(nil),                   // 6: proxy.Config
+	(*Null)(nil),                     // 7: proxy.Null
 }
 var file_proxy_proto_depIdxs = []int32{
 	3,  // 0: proxy.RequestModClientMessage.register:type_name -> proxy.Register
@@ -502,14 +580,18 @@ var file_proxy_proto_depIdxs = []int32{
 	3,  // 9: proxy.ProxyService.ResponseIn:input_type -> proxy.Register
 	2,  // 10: proxy.ProxyService.ResponseMod:input_type -> proxy.ResponseModClientMessage
 	3,  // 11: proxy.ProxyService.ResponseOut:input_type -> proxy.Register
-	4,  // 12: proxy.ProxyService.RequestIn:output_type -> proxy.HttpRequest
-	4,  // 13: proxy.ProxyService.RequestMod:output_type -> proxy.HttpRequest
-	4,  // 14: proxy.ProxyService.RequestOut:output_type -> proxy.HttpRequest
-	5,  // 15: proxy.ProxyService.ResponseIn:output_type -> proxy.HttpResponse
-	5,  // 16: proxy.ProxyService.ResponseMod:output_type -> proxy.HttpResponse
-	5,  // 17: proxy.ProxyService.ResponseOut:output_type -> proxy.HttpResponse
-	12, // [12:18] is the sub-list for method output_type
-	6,  // [6:12] is the sub-list for method input_type
+	6,  // 12: proxy.ProxyService.SetConfig:input_type -> proxy.Config
+	7,  // 13: proxy.ProxyService.GetConfig:input_type -> proxy.Null
+	4,  // 14: proxy.ProxyService.RequestIn:output_type -> proxy.HttpRequest
+	4,  // 15: proxy.ProxyService.RequestMod:output_type -> proxy.HttpRequest
+	4,  // 16: proxy.ProxyService.RequestOut:output_type -> proxy.HttpRequest
+	5,  // 17: proxy.ProxyService.ResponseIn:output_type -> proxy.HttpResponse
+	5,  // 18: proxy.ProxyService.ResponseMod:output_type -> proxy.HttpResponse
+	5,  // 19: proxy.ProxyService.ResponseOut:output_type -> proxy.HttpResponse
+	7,  // 20: proxy.ProxyService.SetConfig:output_type -> proxy.Null
+	6,  // 21: proxy.ProxyService.GetConfig:output_type -> proxy.Config
+	14, // [14:22] is the sub-list for method output_type
+	6,  // [6:14] is the sub-list for method input_type
 	6,  // [6:6] is the sub-list for extension type_name
 	6,  // [6:6] is the sub-list for extension extendee
 	0,  // [0:6] is the sub-list for field type_name
@@ -534,7 +616,7 @@ func file_proxy_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proxy_proto_rawDesc), len(file_proxy_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   6,
+			NumMessages:   8,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

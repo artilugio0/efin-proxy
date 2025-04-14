@@ -265,6 +265,7 @@ func (p *Proxy) processRequestPipelines(req *http.Request) (*http.Request, error
 	currentReq := httpbytes.CloneRequest(req)
 
 	p.requestInPipeline.RunPipeline(currentReq)
+	currentReq = httpbytes.CloneRequest(currentReq) // avoid race conditions between running ro hooks and mod hooks
 
 	currentReq, err := p.requestModPipeline.RunPipeline(currentReq)
 	if err != nil {
@@ -281,6 +282,7 @@ func (p *Proxy) processResponsePipelines(resp *http.Response) (*http.Response, e
 	currentResp := httpbytes.CloneResponse(resp)
 
 	p.responseInPipeline.RunPipeline(currentResp)
+	currentResp = httpbytes.CloneResponse(currentResp) // avoid race conditions between running ro hooks and mod hooks
 
 	currentResp, err := p.responseModPipeline.RunPipeline(currentResp)
 	if err != nil {

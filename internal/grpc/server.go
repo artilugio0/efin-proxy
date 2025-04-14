@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/artilugio0/proxy-vibes/internal/grpc/proto"
+	"github.com/artilugio0/proxy-vibes/internal/httpbytes"
 	"google.golang.org/grpc"
 )
 
@@ -153,7 +154,7 @@ func (s *Server) RequestMod(stream proto.ProxyService_RequestModServer) error {
 	}()
 
 	for r := range originalRequests {
-		if err := stream.Send(ToProtoRequest(r)); err != nil {
+		if err := stream.Send(ToProtoRequest(httpbytes.CloneRequest(r))); err != nil {
 			log.Printf("Failed to send HttpRequest: %v", err)
 			return err
 		}
@@ -211,7 +212,7 @@ func (s *Server) RequestIn(register *proto.Register, stream proto.ProxyService_R
 	}()
 
 	for r := range originalRequests {
-		if err := stream.Send(ToProtoRequest(r)); err != nil {
+		if err := stream.Send(ToProtoRequest(httpbytes.CloneRequest(r))); err != nil {
 			log.Printf("Failed to send HttpRequest: %v", err)
 			return err
 		}
@@ -247,7 +248,7 @@ func (s *Server) RequestOut(register *proto.Register, stream proto.ProxyService_
 	}()
 
 	for r := range originalRequests {
-		if err := stream.Send(ToProtoRequest(r)); err != nil {
+		if err := stream.Send(ToProtoRequest(httpbytes.CloneRequest(r))); err != nil {
 			log.Printf("Failed to send HttpRequest: %v", err)
 			return err
 		}
@@ -299,7 +300,7 @@ func (s *Server) ResponseMod(stream proto.ProxyService_ResponseModServer) error 
 	}()
 
 	for r := range originalResponses {
-		if err := stream.Send(ToProtoResponse(r)); err != nil {
+		if err := stream.Send(ToProtoResponse(httpbytes.CloneResponse(r))); err != nil {
 			log.Printf("Failed to send HttpResponse: %v", err)
 			return err
 		}
@@ -357,7 +358,7 @@ func (s *Server) ResponseIn(register *proto.Register, stream proto.ProxyService_
 	}()
 
 	for r := range originalResponses {
-		if err := stream.Send(ToProtoResponse(r)); err != nil {
+		if err := stream.Send(ToProtoResponse(httpbytes.CloneResponse(r))); err != nil {
 			log.Printf("Failed to send HttpResponse: %v", err)
 			return err
 		}
@@ -393,7 +394,7 @@ func (s *Server) ResponseOut(register *proto.Register, stream proto.ProxyService
 	}()
 
 	for r := range originalResponses {
-		if err := stream.Send(ToProtoResponse(r)); err != nil {
+		if err := stream.Send(ToProtoResponse(httpbytes.CloneResponse(r))); err != nil {
 			log.Printf("Failed to send HttpResponse: %v", err)
 			return err
 		}

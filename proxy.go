@@ -46,7 +46,6 @@ func (pb *ProxyBuilder) GetProxy() (*Proxy, error) {
 		if err != nil {
 			return nil, fmt.Errorf("Failed to open SQLite database: %v", err)
 		}
-		defer db.Close()
 
 		err = hooks.InitDatabase(db)
 		if err != nil {

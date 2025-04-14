@@ -2,7 +2,7 @@
 // versions:
 // 	protoc-gen-go v1.36.6
 // 	protoc        v3.19.1
-// source: internal/grpc/proto/proxy.proto
+// source: proxy.proto
 
 package proto
 
@@ -31,7 +31,7 @@ type Header struct {
 
 func (x *Header) Reset() {
 	*x = Header{}
-	mi := &file_internal_grpc_proto_proxy_proto_msgTypes[0]
+	mi := &file_proxy_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -43,7 +43,7 @@ func (x *Header) String() string {
 func (*Header) ProtoMessage() {}
 
 func (x *Header) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_grpc_proto_proxy_proto_msgTypes[0]
+	mi := &file_proxy_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -56,7 +56,7 @@ func (x *Header) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Header.ProtoReflect.Descriptor instead.
 func (*Header) Descriptor() ([]byte, []int) {
-	return file_internal_grpc_proto_proxy_proto_rawDescGZIP(), []int{0}
+	return file_proxy_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *Header) GetName() string {
@@ -86,7 +86,7 @@ type RequestModClientMessage struct {
 
 func (x *RequestModClientMessage) Reset() {
 	*x = RequestModClientMessage{}
-	mi := &file_internal_grpc_proto_proxy_proto_msgTypes[1]
+	mi := &file_proxy_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -98,7 +98,7 @@ func (x *RequestModClientMessage) String() string {
 func (*RequestModClientMessage) ProtoMessage() {}
 
 func (x *RequestModClientMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_grpc_proto_proxy_proto_msgTypes[1]
+	mi := &file_proxy_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -111,7 +111,7 @@ func (x *RequestModClientMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RequestModClientMessage.ProtoReflect.Descriptor instead.
 func (*RequestModClientMessage) Descriptor() ([]byte, []int) {
-	return file_internal_grpc_proto_proxy_proto_rawDescGZIP(), []int{1}
+	return file_proxy_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *RequestModClientMessage) GetMsg() isRequestModClientMessage_Msg {
@@ -168,7 +168,7 @@ type ResponseModClientMessage struct {
 
 func (x *ResponseModClientMessage) Reset() {
 	*x = ResponseModClientMessage{}
-	mi := &file_internal_grpc_proto_proxy_proto_msgTypes[2]
+	mi := &file_proxy_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -180,7 +180,7 @@ func (x *ResponseModClientMessage) String() string {
 func (*ResponseModClientMessage) ProtoMessage() {}
 
 func (x *ResponseModClientMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_grpc_proto_proxy_proto_msgTypes[2]
+	mi := &file_proxy_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -193,7 +193,7 @@ func (x *ResponseModClientMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResponseModClientMessage.ProtoReflect.Descriptor instead.
 func (*ResponseModClientMessage) Descriptor() ([]byte, []int) {
-	return file_internal_grpc_proto_proxy_proto_rawDescGZIP(), []int{2}
+	return file_proxy_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *ResponseModClientMessage) GetMsg() isResponseModClientMessage_Msg {
@@ -246,7 +246,7 @@ type Register struct {
 
 func (x *Register) Reset() {
 	*x = Register{}
-	mi := &file_internal_grpc_proto_proxy_proto_msgTypes[3]
+	mi := &file_proxy_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -258,7 +258,7 @@ func (x *Register) String() string {
 func (*Register) ProtoMessage() {}
 
 func (x *Register) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_grpc_proto_proxy_proto_msgTypes[3]
+	mi := &file_proxy_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -271,7 +271,7 @@ func (x *Register) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Register.ProtoReflect.Descriptor instead.
 func (*Register) Descriptor() ([]byte, []int) {
-	return file_internal_grpc_proto_proxy_proto_rawDescGZIP(), []int{3}
+	return file_proxy_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *Register) GetName() string {
@@ -295,7 +295,7 @@ type HttpRequest struct {
 
 func (x *HttpRequest) Reset() {
 	*x = HttpRequest{}
-	mi := &file_internal_grpc_proto_proxy_proto_msgTypes[4]
+	mi := &file_proxy_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -307,7 +307,7 @@ func (x *HttpRequest) String() string {
 func (*HttpRequest) ProtoMessage() {}
 
 func (x *HttpRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_grpc_proto_proxy_proto_msgTypes[4]
+	mi := &file_proxy_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -320,7 +320,7 @@ func (x *HttpRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HttpRequest.ProtoReflect.Descriptor instead.
 func (*HttpRequest) Descriptor() ([]byte, []int) {
-	return file_internal_grpc_proto_proxy_proto_rawDescGZIP(), []int{4}
+	return file_proxy_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *HttpRequest) GetId() string {
@@ -371,7 +371,7 @@ type HttpResponse struct {
 
 func (x *HttpResponse) Reset() {
 	*x = HttpResponse{}
-	mi := &file_internal_grpc_proto_proxy_proto_msgTypes[5]
+	mi := &file_proxy_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -383,7 +383,7 @@ func (x *HttpResponse) String() string {
 func (*HttpResponse) ProtoMessage() {}
 
 func (x *HttpResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_grpc_proto_proxy_proto_msgTypes[5]
+	mi := &file_proxy_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -396,7 +396,7 @@ func (x *HttpResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HttpResponse.ProtoReflect.Descriptor instead.
 func (*HttpResponse) Descriptor() ([]byte, []int) {
-	return file_internal_grpc_proto_proxy_proto_rawDescGZIP(), []int{5}
+	return file_proxy_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *HttpResponse) GetId() string {
@@ -427,11 +427,11 @@ func (x *HttpResponse) GetBody() []byte {
 	return nil
 }
 
-var File_internal_grpc_proto_proxy_proto protoreflect.FileDescriptor
+var File_proxy_proto protoreflect.FileDescriptor
 
-const file_internal_grpc_proto_proxy_proto_rawDesc = "" +
+const file_proxy_proto_rawDesc = "" +
 	"\n" +
-	"\x1finternal/grpc/proto/proxy.proto\x12\x05proxy\"2\n" +
+	"\vproxy.proto\x12\x05proxy\"2\n" +
 	"\x06Header\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value\"\x8f\x01\n" +
@@ -469,19 +469,19 @@ const file_internal_grpc_proto_proxy_proto_rawDesc = "" +
 	"\vResponseOut\x12\x0f.proxy.Register\x1a\x13.proxy.HttpResponse\"\x000\x01B7Z5github.com/artilugio0/proxy-vibes/internal/grpc/protob\x06proto3"
 
 var (
-	file_internal_grpc_proto_proxy_proto_rawDescOnce sync.Once
-	file_internal_grpc_proto_proxy_proto_rawDescData []byte
+	file_proxy_proto_rawDescOnce sync.Once
+	file_proxy_proto_rawDescData []byte
 )
 
-func file_internal_grpc_proto_proxy_proto_rawDescGZIP() []byte {
-	file_internal_grpc_proto_proxy_proto_rawDescOnce.Do(func() {
-		file_internal_grpc_proto_proxy_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_internal_grpc_proto_proxy_proto_rawDesc), len(file_internal_grpc_proto_proxy_proto_rawDesc)))
+func file_proxy_proto_rawDescGZIP() []byte {
+	file_proxy_proto_rawDescOnce.Do(func() {
+		file_proxy_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_proxy_proto_rawDesc), len(file_proxy_proto_rawDesc)))
 	})
-	return file_internal_grpc_proto_proxy_proto_rawDescData
+	return file_proxy_proto_rawDescData
 }
 
-var file_internal_grpc_proto_proxy_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
-var file_internal_grpc_proto_proxy_proto_goTypes = []any{
+var file_proxy_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
+var file_proxy_proto_goTypes = []any{
 	(*Header)(nil),                   // 0: proxy.Header
 	(*RequestModClientMessage)(nil),  // 1: proxy.RequestModClientMessage
 	(*ResponseModClientMessage)(nil), // 2: proxy.ResponseModClientMessage
@@ -489,7 +489,7 @@ var file_internal_grpc_proto_proxy_proto_goTypes = []any{
 	(*HttpRequest)(nil),              // 4: proxy.HttpRequest
 	(*HttpResponse)(nil),             // 5: proxy.HttpResponse
 }
-var file_internal_grpc_proto_proxy_proto_depIdxs = []int32{
+var file_proxy_proto_depIdxs = []int32{
 	3,  // 0: proxy.RequestModClientMessage.register:type_name -> proxy.Register
 	4,  // 1: proxy.RequestModClientMessage.modifiedRequest:type_name -> proxy.HttpRequest
 	3,  // 2: proxy.ResponseModClientMessage.register:type_name -> proxy.Register
@@ -515,16 +515,16 @@ var file_internal_grpc_proto_proxy_proto_depIdxs = []int32{
 	0,  // [0:6] is the sub-list for field type_name
 }
 
-func init() { file_internal_grpc_proto_proxy_proto_init() }
-func file_internal_grpc_proto_proxy_proto_init() {
-	if File_internal_grpc_proto_proxy_proto != nil {
+func init() { file_proxy_proto_init() }
+func file_proxy_proto_init() {
+	if File_proxy_proto != nil {
 		return
 	}
-	file_internal_grpc_proto_proxy_proto_msgTypes[1].OneofWrappers = []any{
+	file_proxy_proto_msgTypes[1].OneofWrappers = []any{
 		(*RequestModClientMessage_Register)(nil),
 		(*RequestModClientMessage_ModifiedRequest)(nil),
 	}
-	file_internal_grpc_proto_proxy_proto_msgTypes[2].OneofWrappers = []any{
+	file_proxy_proto_msgTypes[2].OneofWrappers = []any{
 		(*ResponseModClientMessage_Register)(nil),
 		(*ResponseModClientMessage_ModifiedResponse)(nil),
 	}
@@ -532,17 +532,17 @@ func file_internal_grpc_proto_proxy_proto_init() {
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_internal_grpc_proto_proxy_proto_rawDesc), len(file_internal_grpc_proto_proxy_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proxy_proto_rawDesc), len(file_proxy_proto_rawDesc)),
 			NumEnums:      0,
 			NumMessages:   6,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
-		GoTypes:           file_internal_grpc_proto_proxy_proto_goTypes,
-		DependencyIndexes: file_internal_grpc_proto_proxy_proto_depIdxs,
-		MessageInfos:      file_internal_grpc_proto_proxy_proto_msgTypes,
+		GoTypes:           file_proxy_proto_goTypes,
+		DependencyIndexes: file_proxy_proto_depIdxs,
+		MessageInfos:      file_proxy_proto_msgTypes,
 	}.Build()
-	File_internal_grpc_proto_proxy_proto = out.File
-	file_internal_grpc_proto_proxy_proto_goTypes = nil
-	file_internal_grpc_proto_proxy_proto_depIdxs = nil
+	File_proxy_proto = out.File
+	file_proxy_proto_goTypes = nil
+	file_proxy_proto_depIdxs = nil
 }

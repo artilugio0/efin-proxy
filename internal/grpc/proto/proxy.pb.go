@@ -429,6 +429,9 @@ func (x *HttpResponse) GetBody() []byte {
 
 type Config struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
+	DbFile        string                 `protobuf:"bytes,3,opt,name=db_file,json=dbFile,proto3" json:"db_file,omitempty"`
+	PrintLogs     bool                   `protobuf:"varint,4,opt,name=print_logs,json=printLogs,proto3" json:"print_logs,omitempty"`
+	SaveDir       string                 `protobuf:"bytes,5,opt,name=save_dir,json=saveDir,proto3" json:"save_dir,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -461,6 +464,27 @@ func (x *Config) ProtoReflect() protoreflect.Message {
 // Deprecated: Use Config.ProtoReflect.Descriptor instead.
 func (*Config) Descriptor() ([]byte, []int) {
 	return file_proxy_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *Config) GetDbFile() string {
+	if x != nil {
+		return x.DbFile
+	}
+	return ""
+}
+
+func (x *Config) GetPrintLogs() bool {
+	if x != nil {
+		return x.PrintLogs
+	}
+	return false
+}
+
+func (x *Config) GetSaveDir() string {
+	if x != nil {
+		return x.SaveDir
+	}
+	return ""
 }
 
 type Null struct {
@@ -528,8 +552,12 @@ const file_proxy_proto_rawDesc = "" +
 	"\vstatus_code\x18\x02 \x01(\x05R\n" +
 	"statusCode\x12'\n" +
 	"\aheaders\x18\x03 \x03(\v2\r.proxy.HeaderR\aheaders\x12\x12\n" +
-	"\x04body\x18\x04 \x01(\fR\x04body\"\b\n" +
-	"\x06Config\"\x06\n" +
+	"\x04body\x18\x04 \x01(\fR\x04body\"[\n" +
+	"\x06Config\x12\x17\n" +
+	"\adb_file\x18\x03 \x01(\tR\x06dbFile\x12\x1d\n" +
+	"\n" +
+	"print_logs\x18\x04 \x01(\bR\tprintLogs\x12\x19\n" +
+	"\bsave_dir\x18\x05 \x01(\tR\asaveDir\"\x06\n" +
 	"\x04Null2\xd5\x03\n" +
 	"\fProxyService\x124\n" +
 	"\tRequestIn\x12\x0f.proxy.Register\x1a\x12.proxy.HttpRequest\"\x000\x01\x12F\n" +

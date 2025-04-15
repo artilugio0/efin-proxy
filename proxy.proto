@@ -58,6 +58,10 @@ message HttpResponse {
   bytes body = 4;
 }
 
-message Config {}
+message Config {
+	string db_file = 3;
+	bool print_logs = 4;
+	string save_dir = 5;
+}
 
 message Null {}

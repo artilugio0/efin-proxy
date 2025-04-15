@@ -7,14 +7,13 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"path"
-	"strings"
 
 	"github.com/artilugio0/proxy-vibes/internal/certs"
 	"github.com/artilugio0/proxy-vibes/internal/grpc"
 	"github.com/artilugio0/proxy-vibes/internal/hooks"
 	"github.com/artilugio0/proxy-vibes/internal/pipeline"
 	"github.com/artilugio0/proxy-vibes/internal/proxy"
+	"github.com/artilugio0/proxy-vibes/internal/scope"
 )
 
 type ProxyBuilder struct {
@@ -147,7 +146,8 @@ func (pb *ProxyBuilder) GetProxy() (*Proxy, error) {
 	responseModHooks = append(responseModHooks, grpcServer.ResponseModHook)
 	responseOutHooks = append(responseOutHooks, grpcServer.ResponseOutHook)
 
-	p.SetScope(isInScope)
+	scope := scope.New(nil, defaultExcludedExtensions)
+	p.SetScope(scope.IsInScope)
 
 	p.SetRequestInHooks(requestInHooks)
 	p.SetRequestModHooks(requestModHooks)
@@ -179,93 +179,42 @@ func (p *Proxy) ListenAndServe() error {
 	return server.ListenAndServe()
 }
 
-// isInScope and other helper functions remain unchanged...
-func isInScope(r *http.Request) bool {
-	return !IsMultimediaRequest(r) && !IsBinaryDataRequest(r)
-}
-
-func IsMultimediaRequest(r *http.Request) bool {
-	urlPath := r.URL.Path
-	ext := strings.ToLower(path.Ext(urlPath))
-	if ext == "" {
-		return false
-	}
-	imageExtensions := map[string]bool{
-		".jpg":  true,
-		".jpeg": true,
-		".png":  true,
-		".gif":  true,
-		".bmp":  true,
-		".webp": true,
-		".svg":  true,
-	}
-	videoExtensions := map[string]bool{
-		".mp4":  true,
-		".m4v":  true,
-		".mov":  true,
-		".avi":  true,
-		".wmv":  true,
-		".flv":  true,
-		".webm": true,
-		".mkv":  true,
-	}
-	audioExtensions := map[string]bool{
-		".mp3":  true,
-		".m4a":  true,
-		".wav":  true,
-		".ogg":  true,
-		".flac": true,
-		".aac":  true,
-	}
-	return imageExtensions[ext] || videoExtensions[ext] || audioExtensions[ext]
-}
-
-func IsBinaryDataRequest(r *http.Request) bool {
-	urlPath := r.URL.Path
-	ext := strings.ToLower(path.Ext(urlPath))
-	if ext == "" {
-		return false
-	}
-	multimediaExtensions := map[string]bool{
-		".jpg":  true,
-		".jpeg": true,
-		".png":  true,
-		".gif":  true,
-		".bmp":  true,
-		".webp": true,
-		".svg":  true,
-		".mp4":  true,
-		".m4v":  true,
-		".mov":  true,
-		".avi":  true,
-		".wmv":  true,
-		".flv":  true,
-		".webm": true,
-		".mkv":  true,
-		".mp3":  true,
-		".m4a":  true,
-		".wav":  true,
-		".ogg":  true,
-		".flac": true,
-		".aac":  true,
-	}
-	binaryExtensions := map[string]bool{
-		".pdf":  true,
-		".doc":  true,
-		".docx": true,
-		".xls":  true,
-		".xlsx": true,
-		".zip":  true,
-		".rar":  true,
-		".tar":  true,
-		".gz":   true,
-		".exe":  true,
-		".dll":  true,
-		".bin":  true,
-		".iso":  true,
-		".dat":  true,
-		".db":   true,
-		".img":  true,
-	}
-	return binaryExtensions[ext] && !multimediaExtensions[ext]
+var defaultExcludedExtensions []string = []string{
+	".aac",
+	".avi",
+	".bin",
+	".bmp",
+	".dat",
+	".db",
+	".dll",
+	".doc",
+	".docx",
+	".exe",
+	".flac",
+	".flv",
+	".gif",
+	".gz",
+	".img",
+	".iso",
+	".jpeg",
+	".jpg",
+	".m4a",
+	".m4v",
+	".mkv",
+	".mov",
+	".mp3",
+	".mp4",
+	".ogg",
+	".pdf",
+	".png",
+	".rar",
+	".svg",
+	".tar",
+	".wav",
+	".webm",
+	".webp",
+	".wmv",
+	".xls",
+	".xlsx",
+	".zip",
 }

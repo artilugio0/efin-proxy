@@ -165,7 +165,7 @@ func TestSaveResponseToDB(t *testing.T) {
 	var statusCode int
 	var body string
 	var contentLength int64
-	err = db.QueryRow("SELECT status_code, body, content_length FROM responses WHERE request_id = ?", "test-response-id").Scan(&statusCode, &body, &contentLength)
+	err = db.QueryRow("SELECT status_code, body, content_length FROM responses WHERE response_id = ?", "test-response-id").Scan(&statusCode, &body, &contentLength)
 	if err != nil {
 		t.Fatalf("Failed to query response: %v", err)
 	}

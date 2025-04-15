@@ -28,7 +28,7 @@ func InitDatabase(db *sql.DB) error {
         );
         CREATE TABLE IF NOT EXISTS responses (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            request_id TEXT NOT NULL,
+            response_id TEXT NOT NULL,
             status_code INTEGER NOT NULL,
             body TEXT,
             content_length INTEGER
@@ -40,7 +40,7 @@ func InitDatabase(db *sql.DB) error {
             name TEXT NOT NULL,
             value TEXT NOT NULL,
             FOREIGN KEY (request_id) REFERENCES requests(request_id),
-            FOREIGN KEY (response_id) REFERENCES responses(request_id)
+            FOREIGN KEY (response_id) REFERENCES responses(response_id)
         );
         CREATE TABLE IF NOT EXISTS cookies (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -49,10 +49,10 @@ func InitDatabase(db *sql.DB) error {
             name TEXT NOT NULL,
             value TEXT NOT NULL,
             FOREIGN KEY (request_id) REFERENCES requests(request_id),
-            FOREIGN KEY (response_id) REFERENCES responses(request_id)
+            FOREIGN KEY (response_id) REFERENCES responses(response_id)
         );
         CREATE INDEX IF NOT EXISTS idx_requests_request_id ON requests (request_id);
-        CREATE INDEX IF NOT EXISTS idx_responses_request_id ON responses (request_id);
+        CREATE INDEX IF NOT EXISTS idx_responses_request_id ON responses (response_id);
         CREATE INDEX IF NOT EXISTS idx_requests_url ON requests (url);
         CREATE INDEX IF NOT EXISTS idx_responses_status_code ON responses (status_code);
         CREATE INDEX IF NOT EXISTS idx_headers_name ON headers (name);
@@ -253,7 +253,7 @@ func saveResponseToDB(db *sql.DB, resp *http.Response) error {
 
 		// Insert response
 		_, err = tx.Exec(`
-            INSERT INTO responses (request_id, status_code, body, content_length)
+            INSERT INTO responses (response_id, status_code, body, content_length)
             VALUES (?, ?, ?, ?)
         `, id, resp.StatusCode, string(body), contentLength)
 		if err == nil {

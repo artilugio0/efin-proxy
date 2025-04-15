@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"regexp"
 
 	"github.com/artilugio0/proxy-vibes/internal/certs"
 	"github.com/artilugio0/proxy-vibes/internal/grpc"
@@ -26,6 +27,9 @@ type ProxyBuilder struct {
 
 	Addr     string
 	GRPCAddr string
+
+	DomainRe           string
+	ExcludedExtensions []string
 
 	RequestInHooks  []func(*http.Request) error
 	RequestModHooks []func(*http.Request) (*http.Request, error)
@@ -146,7 +150,19 @@ func (pb *ProxyBuilder) GetProxy() (*Proxy, error) {
 	responseModHooks = append(responseModHooks, grpcServer.ResponseModHook)
 	responseOutHooks = append(responseOutHooks, grpcServer.ResponseOutHook)
 
-	scope := scope.New(nil, defaultExcludedExtensions)
+	var domainRe *regexp.Regexp
+	if pb.DomainRe != "" {
+		var err error
+		domainRe, err = regexp.Compile(pb.DomainRe)
+		if err != nil {
+			return nil, err
+		}
+	}
+	excludedExtensions := defaultExcludedExtensions
+	if pb.ExcludedExtensions != nil {
+		excludedExtensions = pb.ExcludedExtensions
+	}
+	scope := scope.New(domainRe, excludedExtensions)
 	p.SetScope(scope.IsInScope)
 
 	p.SetRequestInHooks(requestInHooks)

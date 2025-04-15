@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"log"
+	"strings"
 
 	proxyVibes "github.com/artilugio0/proxy-vibes"
 	_ "modernc.org/sqlite" // SQLite driver
@@ -15,6 +16,8 @@ func main() {
 	dbFileShort := flag.String("D", "", "Path to SQLite database file (short form, empty to disable)")
 	dbFileLong := flag.String("db-file", "", "Path to SQLite database file (long form, empty to disable)")
 	printLogs := flag.Bool("p", false, "Enable raw request/response logging to stdout")
+	domainRe := flag.String("s", "", "Regex specifying the domains in scope")
+	excludedExtensions := flag.String("e", "", "comma separated list of excluded extensions. Example: png,jpg")
 	flag.Parse()
 
 	// Determine database path from -D or -db-file (priority: -db-file > -D)
@@ -23,12 +26,19 @@ func main() {
 		dbPath = *dbFileShort
 	}
 
+	var excludedExtensionsList []string
+	if *excludedExtensions != "" {
+		excludedExtensionsList = strings.Split(*excludedExtensions, ",")
+	}
+
 	proxy, err := (&proxyVibes.ProxyBuilder{
-		CertificateFile: *certFile,
-		KeyFile:         *keyFile,
-		DBFile:          dbPath,
-		PrintLogs:       *printLogs,
-		SaveDir:         *saveDir,
+		CertificateFile:    *certFile,
+		KeyFile:            *keyFile,
+		DBFile:             dbPath,
+		PrintLogs:          *printLogs,
+		SaveDir:            *saveDir,
+		DomainRe:           *domainRe,
+		ExcludedExtensions: excludedExtensionsList,
 	}).GetProxy()
 
 	if err != nil {

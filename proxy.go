@@ -3,7 +3,6 @@ package proxyVibes
 import (
 	"crypto/rsa"
 	"crypto/x509"
-	"database/sql"
 	"fmt"
 	"log"
 	"net/http"
@@ -41,21 +40,6 @@ type ProxyBuilder struct {
 }
 
 func (pb *ProxyBuilder) GetProxy() (*Proxy, error) {
-	var db *sql.DB
-	var err error
-
-	if pb.DBFile != "" {
-		db, err = sql.Open("sqlite", pb.DBFile)
-		if err != nil {
-			return nil, fmt.Errorf("Failed to open SQLite database: %v", err)
-		}
-
-		err = hooks.InitDatabase(db)
-		if err != nil {
-			return nil, fmt.Errorf("Failed to initialize database: %v", err)
-		}
-	}
-
 	var rootCA *x509.Certificate
 	var rootKey *rsa.PrivateKey
 
@@ -125,8 +109,8 @@ func (pb *ProxyBuilder) GetProxy() (*Proxy, error) {
 	})
 
 	// Add database save hooks if database is initialized
-	if db != nil {
-		saveRequest, saveResponse := hooks.NewDBSaveHooks(db)
+	if pb.DBFile != "" {
+		saveRequest, saveResponse := hooks.NewDBSaveHooks(pb.DBFile)
 		requestOutHooks = append(requestOutHooks, saveRequest)
 		responseInHooks = append(responseInHooks, saveResponse)
 		log.Printf("Saving requests and responses to database at %s", pb.DBFile)

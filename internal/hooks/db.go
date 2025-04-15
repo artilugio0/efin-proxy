@@ -71,7 +71,18 @@ type dbQueueItem struct {
 }
 
 // NewDBSaveHooks returns request and response hooks that send data to a queue for asynchronous processing
-func NewDBSaveHooks(db *sql.DB) (pipeline.ReadOnlyHook[*http.Request], pipeline.ReadOnlyHook[*http.Response]) {
+func NewDBSaveHooks(dbFile string) (pipeline.ReadOnlyHook[*http.Request], pipeline.ReadOnlyHook[*http.Response]) {
+	db, err := sql.Open("sqlite", dbFile)
+	if err != nil {
+		log.Printf("Failed to open SQLite database: %v", err)
+	}
+
+	err = InitDatabase(db)
+	if err != nil {
+		log.Printf("Failed to initialize database: %v", err)
+	}
+	db.Close()
+
 	// Buffered channel to act as a queue (adjust size based on expected load)
 	queue := make(chan dbQueueItem, 1000)
 
@@ -79,16 +90,18 @@ func NewDBSaveHooks(db *sql.DB) (pipeline.ReadOnlyHook[*http.Request], pipeline.
 	go func() {
 		for item := range queue {
 			if item.isRequest {
-				err := saveRequestToDB(db, item.req)
+				err := saveRequestToDB(dbFile, item.req)
 				if err != nil {
 					log.Printf("Failed to process request from queue: %v", err)
 				}
 			} else {
-				err := saveResponseToDB(db, item.resp)
+				err := saveResponseToDB(dbFile, item.resp)
 				if err != nil {
 					log.Printf("Failed to process response from queue: %v", err)
 				}
 			}
+
+			db.Close()
 		}
 	}()
 
@@ -130,7 +143,7 @@ func NewDBSaveHooks(db *sql.DB) (pipeline.ReadOnlyHook[*http.Request], pipeline.
 }
 
 // saveRequestToDB performs the actual database insert for a request with retries
-func saveRequestToDB(db *sql.DB, req *http.Request) error {
+func saveRequestToDB(dbFile string, req *http.Request) error {
 	id := ids.GetRequestID(req)
 
 	// Get body
@@ -145,86 +158,97 @@ func saveRequestToDB(db *sql.DB, req *http.Request) error {
 	}
 
 	const maxRetries = 5
-	for attempt := 0; attempt < maxRetries; attempt++ {
-		// Start a transaction
-		tx, err := db.Begin()
-		if err != nil {
-			return fmt.Errorf("failed to begin transaction: %v", err)
-		}
 
-		// Insert request
-		_, err = tx.Exec(`
-            INSERT INTO requests (request_id, method, url, body)
-            VALUES (?, ?, ?, ?)
-        `, id, req.Method, req.URL.String(), string(body))
-		if err == nil {
-			// Insert headers, including Host if present
-			for name, values := range req.Header {
-				for _, value := range values {
-					_, err = tx.Exec(`
+	err := retry(maxRetries, func() (bool, error) {
+		db, err := sql.Open("sqlite", dbFile)
+		if err != nil {
+			log.Printf("Failed to open SQLite database: %v", err)
+			return false, err
+		}
+		defer db.Close()
+
+		err = func() error {
+			// Start a transaction
+			tx, err := db.Begin()
+			if err != nil {
+				return err
+			}
+			defer tx.Rollback()
+
+			// Insert request
+			_, err = tx.Exec(`
+				INSERT INTO requests (request_id, method, url, body)
+				VALUES (?, ?, ?, ?)
+			`, id, req.Method, req.URL.String(), string(body))
+			if err == nil {
+				// Insert headers, including Host if present
+				for name, values := range req.Header {
+					for _, value := range values {
+						_, err = tx.Exec(`
                         INSERT INTO headers (request_id, response_id, name, value)
                         VALUES (?, NULL, ?, ?)
                     `, id, name, value)
-					if err != nil {
-						tx.Rollback()
-						return fmt.Errorf("failed to save request header %s: %v", name, err)
+						if err != nil {
+							return err
+						}
 					}
 				}
-			}
 
-			// Explicitly save the Host header if it’s set and not already in Header map
-			if req.Host != "" && req.Header.Get("Host") == "" {
-				_, err = tx.Exec(`
+				// Explicitly save the Host header if it’s set and not already in Header map
+				if req.Host != "" && req.Header.Get("Host") == "" {
+					_, err = tx.Exec(`
                     INSERT INTO headers (request_id, response_id, name, value)
                     VALUES (?, NULL, ?, ?)
                 `, id, "Host", req.Host)
-				if err != nil {
-					tx.Rollback()
-					return fmt.Errorf("failed to save request Host header: %v", err)
+					if err != nil {
+						return err
+					}
 				}
-			}
 
-			// Insert cookies from Cookie header
-			if cookies := req.Cookies(); len(cookies) > 0 {
-				for _, cookie := range cookies {
-					_, err = tx.Exec(`
+				// Insert cookies from Cookie header
+				if cookies := req.Cookies(); len(cookies) > 0 {
+					for _, cookie := range cookies {
+						_, err = tx.Exec(`
                         INSERT INTO cookies (request_id, response_id, name, value)
                         VALUES (?, NULL, ?, ?)
                     `, id, cookie.Name, cookie.Value)
-					if err != nil {
-						tx.Rollback()
-						return fmt.Errorf("failed to save request cookie %s: %v", cookie.Name, err)
+						if err != nil {
+							return err
+						}
 					}
 				}
 			}
 
-			// Commit if all inserts succeed
-			if err = tx.Commit(); err == nil {
-				return nil
+			if err := tx.Commit(); err != nil {
+				log.Printf("commit error: %v", err)
+				return err
 			}
+
+			return nil
+		}()
+
+		if err != nil {
+			// Check if error is due to database lock (SQLITE_BUSY)
+			if sqliteErr, ok := err.(*sqlite.Error); ok && strings.Contains(strings.ToLower(sqlite.ErrorCodeString[sqliteErr.Code()]), "busy") {
+				log.Printf("Database locked for request %s, retrying...: %v", id, err)
+				return true, err
+			}
+
+			return false, err
 		}
 
-		// Rollback on error
-		tx.Rollback()
+		return false, nil
+	})
 
-		// Check if error is due to database lock (SQLITE_BUSY)
-		if sqliteErr, ok := err.(*sqlite.Error); ok && strings.Contains(strings.ToLower(sqlite.ErrorCodeString[sqliteErr.Code()]), "busy") {
-			// Exponential backoff: 50ms * (2^attempt)
-			delay := time.Duration(50*(1<<attempt)) * time.Millisecond
-			log.Printf("Database locked for request %s, retrying in %v (attempt %d/%d)", id, delay, attempt+1, maxRetries)
-			time.Sleep(delay)
-			continue
-		}
-
-		// Non-retryable error, return immediately
-		return fmt.Errorf("failed to save request to database: %v", err)
+	if err == nil {
+		return nil
 	}
 
-	return fmt.Errorf("failed to save request %s after %d retries due to database lock", id, maxRetries)
+	return fmt.Errorf("failed to save request to database: %v", err)
 }
 
 // saveResponseToDB performs the actual database insert for a response with retries
-func saveResponseToDB(db *sql.DB, resp *http.Response) error {
+func saveResponseToDB(dbFile string, resp *http.Response) error {
 	id := ids.GetResponseID(resp)
 
 	// Get body
@@ -239,81 +263,113 @@ func saveResponseToDB(db *sql.DB, resp *http.Response) error {
 	}
 
 	const maxRetries = 5
-	for attempt := 0; attempt < maxRetries; attempt++ {
-		// Start a transaction
-		tx, err := db.Begin()
+	err := retry(maxRetries, func() (bool, error) {
+		db, err := sql.Open("sqlite", dbFile)
 		if err != nil {
-			return fmt.Errorf("failed to begin transaction: %v", err)
+			log.Printf("Failed to open SQLite database: %v", err)
+			return false, err
 		}
+		defer db.Close()
 
-		contentLength := resp.ContentLength
-		if contentLength == -1 {
-			contentLength = int64(len(body))
-		}
+		err = func() error {
+			// Start a transaction
+			tx, err := db.Begin()
+			if err != nil {
+				return err
+			}
+			defer tx.Rollback()
 
-		// Insert response
-		_, err = tx.Exec(`
-            INSERT INTO responses (response_id, status_code, body, content_length)
-            VALUES (?, ?, ?, ?)
-        `, id, resp.StatusCode, string(body), contentLength)
-		if err == nil {
-			// Insert headers
-			for name, values := range resp.Header {
-				for _, value := range values {
-					_, err = tx.Exec(`
-                        INSERT INTO headers (request_id, response_id, name, value)
-                        VALUES (NULL, ?, ?, ?)
-                    `, id, name, value)
-					if err != nil {
-						tx.Rollback()
-						return fmt.Errorf("failed to save response header %s: %v", name, err)
-					}
-				}
+			contentLength := resp.ContentLength
+			if contentLength == -1 {
+				contentLength = int64(len(body))
 			}
 
-			// Insert cookies from Set-Cookie header
-			if setCookies := resp.Header["Set-Cookie"]; len(setCookies) > 0 {
-				for _, setCookie := range setCookies {
-					parts := bytes.SplitN([]byte(setCookie), []byte("="), 2)
-					if len(parts) == 2 {
-						name := string(parts[0])
-						value := string(parts[1])
-						if semicolon := bytes.IndexByte([]byte(value), ';'); semicolon != -1 {
-							value = value[:semicolon]
-						}
+			// Insert response
+			_, err = tx.Exec(`
+				INSERT INTO responses (response_id, status_code, body, content_length)
+				VALUES (?, ?, ?, ?)
+			`, id, resp.StatusCode, string(body), contentLength)
+			if err == nil {
+				// Insert headers
+				for name, values := range resp.Header {
+					for _, value := range values {
 						_, err = tx.Exec(`
-                            INSERT INTO cookies (request_id, response_id, name, value)
-                            VALUES (NULL, ?, ?, ?)
-                        `, id, name, value)
+							INSERT INTO headers (request_id, response_id, name, value)
+							VALUES (NULL, ?, ?, ?)
+						`, id, name, value)
 						if err != nil {
-							tx.Rollback()
-							return fmt.Errorf("failed to save response cookie %s: %v", name, err)
+							return err
+						}
+					}
+				}
+
+				// Insert cookies from Set-Cookie header
+				if setCookies := resp.Header["Set-Cookie"]; len(setCookies) > 0 {
+					for _, setCookie := range setCookies {
+						parts := bytes.SplitN([]byte(setCookie), []byte("="), 2)
+						if len(parts) == 2 {
+							name := string(parts[0])
+							value := string(parts[1])
+							if semicolon := bytes.IndexByte([]byte(value), ';'); semicolon != -1 {
+								value = value[:semicolon]
+							}
+							_, err = tx.Exec(`
+								INSERT INTO cookies (request_id, response_id, name, value)
+								VALUES (NULL, ?, ?, ?)
+							`, id, name, value)
+							if err != nil {
+								return err
+							}
 						}
 					}
 				}
 			}
 
-			// Commit if all inserts succeed
-			if err = tx.Commit(); err == nil {
-				return nil
+			if err := tx.Commit(); err != nil {
+				log.Printf("commit error: %v", err)
+				return err
 			}
+
+			return nil
+		}()
+
+		if err != nil {
+			// Check if error is due to database lock (SQLITE_BUSY)
+			if sqliteErr, ok := err.(*sqlite.Error); ok && strings.Contains(strings.ToLower(sqlite.ErrorCodeString[sqliteErr.Code()]), "busy") {
+				log.Printf("Database locked for response %s, retrying...: %v", id, err)
+				return true, err
+			}
+
+			return false, err
 		}
 
-		// Rollback on error
-		tx.Rollback()
+		return false, nil
 
-		// Check if error is due to database lock (SQLITE_BUSY)
-		if sqliteErr, ok := err.(*sqlite.Error); ok && strings.Contains(strings.ToLower(sqlite.ErrorCodeString[sqliteErr.Code()]), "busy") {
-			// Exponential backoff: 50ms * (2^attempt)
-			delay := time.Duration(50*(1<<attempt)) * time.Millisecond
-			log.Printf("Database locked for response %s, retrying in %v (attempt %d/%d)", id, delay, attempt+1, maxRetries)
-			time.Sleep(delay)
-			continue
-		}
+	})
 
-		// Non-retryable error, return immediately
-		return fmt.Errorf("failed to save response to database: %v", err)
+	if err == nil {
+		return nil
 	}
 
-	return fmt.Errorf("failed to save response %s after %d retries due to database lock", id, maxRetries)
+	return fmt.Errorf("failed to save response to database: %v", err)
+}
+
+func retry(attempts int, f func() (bool, error)) error {
+	var err error
+	for attempt := 0; attempt < attempts; attempt++ {
+		var attemptRetry bool
+		attemptRetry, err = f()
+		if err == nil {
+			return nil
+		}
+
+		if !attemptRetry {
+			return err
+		}
+
+		delay := time.Duration(500*(1<<attempt)) * time.Millisecond
+		time.Sleep(delay)
+	}
+
+	return err
 }

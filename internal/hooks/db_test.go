@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -55,9 +56,17 @@ func TestInitDatabase(t *testing.T) {
 }
 
 func TestSaveRequestToDB(t *testing.T) {
-	db, err := sql.Open("sqlite", ":memory:")
+	dbF, err := os.CreateTemp("", "tmpfile-")
 	if err != nil {
-		t.Fatalf("Failed to open in-memory database: %v", err)
+		t.Fatalf("could not create db file: %v", err)
+	}
+	defer dbF.Close()
+	defer os.Remove(dbF.Name())
+	dbFile := dbF.Name()
+
+	db, err := sql.Open("sqlite", dbFile)
+	if err != nil {
+		t.Fatalf("Failed to open tmp database: %v", err)
 	}
 	defer db.Close()
 
@@ -74,7 +83,7 @@ func TestSaveRequestToDB(t *testing.T) {
 	req = ids.SetRequestID(req, "test-request-id")
 
 	// Save the request
-	err = saveRequestToDB(db, req)
+	err = saveRequestToDB(dbFile, req)
 	if err != nil {
 		t.Fatalf("saveRequestToDB failed: %v", err)
 	}
@@ -134,9 +143,17 @@ func TestSaveRequestToDB(t *testing.T) {
 }
 
 func TestSaveResponseToDB(t *testing.T) {
-	db, err := sql.Open("sqlite", ":memory:")
+	dbF, err := os.CreateTemp("", "tmpfile-")
 	if err != nil {
-		t.Fatalf("Failed to open in-memory database: %v", err)
+		t.Fatalf("could not create db file: %v", err)
+	}
+	defer dbF.Close()
+	defer os.Remove(dbF.Name())
+	dbFile := dbF.Name()
+
+	db, err := sql.Open("sqlite", dbFile)
+	if err != nil {
+		t.Fatalf("Failed to open tmp database: %v", err)
 	}
 	defer db.Close()
 
@@ -156,7 +173,7 @@ func TestSaveResponseToDB(t *testing.T) {
 	resp.Request = ids.SetRequestID(resp.Request, "test-response-id")
 
 	// Save the response
-	err = saveResponseToDB(db, resp)
+	err = saveResponseToDB(dbFile, resp)
 	if err != nil {
 		t.Fatalf("saveResponseToDB failed: %v", err)
 	}

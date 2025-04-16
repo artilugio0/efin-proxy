@@ -428,12 +428,14 @@ func (x *HttpResponse) GetBody() []byte {
 }
 
 type Config struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	DbFile        string                 `protobuf:"bytes,3,opt,name=db_file,json=dbFile,proto3" json:"db_file,omitempty"`
-	PrintLogs     bool                   `protobuf:"varint,4,opt,name=print_logs,json=printLogs,proto3" json:"print_logs,omitempty"`
-	SaveDir       string                 `protobuf:"bytes,5,opt,name=save_dir,json=saveDir,proto3" json:"save_dir,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state                   protoimpl.MessageState `protogen:"open.v1"`
+	DbFile                  string                 `protobuf:"bytes,1,opt,name=db_file,json=dbFile,proto3" json:"db_file,omitempty"`
+	PrintLogs               bool                   `protobuf:"varint,2,opt,name=print_logs,json=printLogs,proto3" json:"print_logs,omitempty"`
+	SaveDir                 string                 `protobuf:"bytes,3,opt,name=save_dir,json=saveDir,proto3" json:"save_dir,omitempty"`
+	ScopeDomainRe           string                 `protobuf:"bytes,4,opt,name=scopeDomainRe,proto3" json:"scopeDomainRe,omitempty"`
+	ScopeExcludedExtensions []string               `protobuf:"bytes,5,rep,name=scopeExcludedExtensions,proto3" json:"scopeExcludedExtensions,omitempty"`
+	unknownFields           protoimpl.UnknownFields
+	sizeCache               protoimpl.SizeCache
 }
 
 func (x *Config) Reset() {
@@ -485,6 +487,20 @@ func (x *Config) GetSaveDir() string {
 		return x.SaveDir
 	}
 	return ""
+}
+
+func (x *Config) GetScopeDomainRe() string {
+	if x != nil {
+		return x.ScopeDomainRe
+	}
+	return ""
+}
+
+func (x *Config) GetScopeExcludedExtensions() []string {
+	if x != nil {
+		return x.ScopeExcludedExtensions
+	}
+	return nil
 }
 
 type Null struct {
@@ -552,12 +568,14 @@ const file_proxy_proto_rawDesc = "" +
 	"\vstatus_code\x18\x02 \x01(\x05R\n" +
 	"statusCode\x12'\n" +
 	"\aheaders\x18\x03 \x03(\v2\r.proxy.HeaderR\aheaders\x12\x12\n" +
-	"\x04body\x18\x04 \x01(\fR\x04body\"[\n" +
+	"\x04body\x18\x04 \x01(\fR\x04body\"\xbb\x01\n" +
 	"\x06Config\x12\x17\n" +
-	"\adb_file\x18\x03 \x01(\tR\x06dbFile\x12\x1d\n" +
+	"\adb_file\x18\x01 \x01(\tR\x06dbFile\x12\x1d\n" +
 	"\n" +
-	"print_logs\x18\x04 \x01(\bR\tprintLogs\x12\x19\n" +
-	"\bsave_dir\x18\x05 \x01(\tR\asaveDir\"\x06\n" +
+	"print_logs\x18\x02 \x01(\bR\tprintLogs\x12\x19\n" +
+	"\bsave_dir\x18\x03 \x01(\tR\asaveDir\x12$\n" +
+	"\rscopeDomainRe\x18\x04 \x01(\tR\rscopeDomainRe\x128\n" +
+	"\x17scopeExcludedExtensions\x18\x05 \x03(\tR\x17scopeExcludedExtensions\"\x06\n" +
 	"\x04Null2\xd5\x03\n" +
 	"\fProxyService\x124\n" +
 	"\tRequestIn\x12\x0f.proxy.Register\x1a\x12.proxy.HttpRequest\"\x000\x01\x12F\n" +

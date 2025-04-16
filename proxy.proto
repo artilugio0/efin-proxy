@@ -59,9 +59,11 @@ message HttpResponse {
 }
 
 message Config {
-	string db_file = 3;
-	bool print_logs = 4;
-	string save_dir = 5;
+	string db_file = 1;
+	bool print_logs = 2;
+	string save_dir = 3;
+	string scopeDomainRe = 4;
+	repeated string scopeExcludedExtensions = 5;
 }
 
 message Null {}

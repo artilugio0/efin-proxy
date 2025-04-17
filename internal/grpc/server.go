@@ -1,6 +1,7 @@
 package grpc
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/artilugio0/proxy-vibes/internal/grpc/proto"
 	"github.com/artilugio0/proxy-vibes/internal/httpbytes"
+	"github.com/artilugio0/proxy-vibes/internal/proxy"
 	"google.golang.org/grpc"
 )
 
@@ -46,6 +48,10 @@ type responsesChannels struct {
 type Server struct {
 	proto.UnimplementedProxyServiceServer
 
+	proxy       *proxy.Proxy
+	configMutex sync.RWMutex
+	config      *proxy.Config
+
 	requestInClientsMutex sync.RWMutex
 	requestInClients      map[string]*requestsReadOnlyChannels
 
@@ -65,8 +71,12 @@ type Server struct {
 	responseOutClients      map[string]*responsesReadOnlyChannels
 }
 
-func NewServer() *Server {
+func NewServer(p *proxy.Proxy, config *proxy.Config) *Server {
 	server := &Server{
+		proxy:       p,
+		config:      config,
+		configMutex: sync.RWMutex{},
+
 		requestInClients:      map[string]*requestsReadOnlyChannels{},
 		requestInClientsMutex: sync.RWMutex{},
 
@@ -86,6 +96,10 @@ func NewServer() *Server {
 		responseOutClientsMutex: sync.RWMutex{},
 	}
 
+	return server
+}
+
+func (s *Server) Run() {
 	// Listen on a TCP port.
 	lis, err := net.Listen("tcp", ":50051")
 	if err != nil {
@@ -94,22 +108,18 @@ func NewServer() *Server {
 
 	// Create a new gRPC Server.
 	const maxMsgSize = 1024 * 1024 * 1024 // 10MB
-	s := grpc.NewServer(
+	gs := grpc.NewServer(
 		grpc.MaxRecvMsgSize(maxMsgSize),
 		grpc.MaxSendMsgSize(maxMsgSize),
 	)
 
 	// Register the ProxyService implementation.
-	proto.RegisterProxyServiceServer(s, server)
+	proto.RegisterProxyServiceServer(gs, s)
 
 	log.Println("Starting gRPC Server on :50051")
-	go func() {
-		if err := s.Serve(lis); err != nil {
-			log.Fatalf("Failed to serve: %v", err)
-		}
-	}()
-
-	return server
+	if err := gs.Serve(lis); err != nil {
+		log.Fatalf("Failed to serve: %v", err)
+	}
 }
 
 // RequestMod handles bidirectional streaming for HTTP request modification.
@@ -632,6 +642,40 @@ FOR:
 	}
 
 	return r, nil
+}
+
+// GetConfig returns the current proxy config
+func (s *Server) GetConfig(ctx context.Context, _ *proto.Null) (*proto.Config, error) {
+	s.configMutex.RLock()
+	defer s.configMutex.RUnlock()
+
+	config := &proto.Config{
+		DbFile:                  s.config.DBFile,
+		PrintLogs:               s.config.PrintLogs,
+		SaveDir:                 s.config.SaveDir,
+		ScopeDomainRe:           s.config.DomainRe,
+		ScopeExcludedExtensions: s.config.ExcludedExtensions,
+	}
+
+	return config, nil
+}
+
+// SetConfig returns the current proxy config
+func (s *Server) SetConfig(ctx context.Context, config *proto.Config) (*proto.Null, error) {
+	s.configMutex.Lock()
+	newConfig := *s.config
+	defer s.configMutex.Unlock()
+
+	newConfig.DBFile = config.DbFile
+	newConfig.PrintLogs = config.PrintLogs
+	newConfig.SaveDir = config.SaveDir
+	newConfig.DomainRe = config.ScopeDomainRe
+	newConfig.ExcludedExtensions = config.ScopeExcludedExtensions
+
+	newConfig.Apply(s.proxy)
+	s.config = &newConfig
+
+	return &proto.Null{}, nil
 }
 
 func asyncCloseChannel[I any](c chan<- I) {

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"os"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -35,6 +36,12 @@ func main() {
 
 	// Channel to handle graceful shutdown
 	done := make(chan struct{})
+
+	// play around with the proxy config
+	printConfig(client)
+	if len(os.Args) == 2 {
+		setProxyPrintConfig(client, os.Args[1] == "true")
+	}
 
 	// Start bidirectional streaming
 	go requestInClient(client, clientName, done)
@@ -248,5 +255,30 @@ func responseOutClient(client pb.ProxyServiceClient, clientName string, done cha
 
 		fmt.Printf("Received Response:\n  ResponseID: %s\n  Status: %d\n  Headers: %v\n",
 			req.Id, req.StatusCode, req.Headers)
+	}
+}
+
+func printConfig(client pb.ProxyServiceClient) {
+	config, err := client.GetConfig(context.TODO(), &pb.Null{})
+	if err != nil {
+		log.Fatalf("Failed to get config: %v", err)
+	}
+	fmt.Printf("DbFile: %s\n", config.DbFile)
+	fmt.Printf("PrintLogs: %t\n", config.PrintLogs)
+	fmt.Printf("SaveDir: %s\n", config.SaveDir)
+	fmt.Printf("ScopeDomainRe: %s\n", config.ScopeDomainRe)
+	fmt.Printf("ScopeExcludedExtensions: %+v\n", config.ScopeExcludedExtensions)
+}
+
+func setProxyPrintConfig(client pb.ProxyServiceClient, value bool) {
+	config, err := client.GetConfig(context.TODO(), &pb.Null{})
+	if err != nil {
+		log.Fatalf("Failed to get config: %v", err)
+	}
+
+	config.PrintLogs = value
+	_, err = client.SetConfig(context.TODO(), config)
+	if err != nil {
+		log.Fatalf("Failed to set config: %v", err)
 	}
 }

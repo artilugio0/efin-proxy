@@ -6,14 +6,11 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"regexp"
 
 	"github.com/artilugio0/proxy-vibes/internal/certs"
 	"github.com/artilugio0/proxy-vibes/internal/grpc"
-	"github.com/artilugio0/proxy-vibes/internal/hooks"
 	"github.com/artilugio0/proxy-vibes/internal/pipeline"
 	"github.com/artilugio0/proxy-vibes/internal/proxy"
-	"github.com/artilugio0/proxy-vibes/internal/scope"
 )
 
 type ProxyBuilder struct {
@@ -95,66 +92,42 @@ func (pb *ProxyBuilder) GetProxy() (*Proxy, error) {
 		responseOutHooks = append(responseOutHooks, h)
 	}
 
-	// Add logging hooks if -p is set
-	if pb.PrintLogs {
-		requestOutHooks = append(requestOutHooks, hooks.LogRawRequest)
-		responseInHooks = append(responseInHooks, hooks.LogRawResponse)
-		log.Printf("Enabled raw request/response logging to stdout")
-	}
-
-	// Add Accept-Encoding removal hook
-	requestModHooks = append(requestModHooks, func(r *http.Request) (*http.Request, error) {
-		r.Header.Del("Accept-Encoding")
-		return r, nil
-	})
-
-	// Add database save hooks if database is initialized
-	if pb.DBFile != "" {
-		saveRequest, saveResponse := hooks.NewDBSaveHooks(pb.DBFile)
-		requestOutHooks = append(requestOutHooks, saveRequest)
-		responseInHooks = append(responseInHooks, saveResponse)
-		log.Printf("Saving requests and responses to database at %s", pb.DBFile)
-	}
-
-	// Add file save hooks if directory is specified
-	if pb.SaveDir != "" {
-		saveRequest, saveResponse := hooks.NewFileSaveHooks(pb.SaveDir)
-		requestOutHooks = append(requestOutHooks, saveRequest)
-		responseInHooks = append(responseInHooks, saveResponse)
-		log.Printf("Saving requests and responses to directory: %s", pb.SaveDir)
-	}
-
-	// Initialize gRPC client manager and start the server and define gRPC hooks
-	grpcServer := grpc.NewServer()
-
-	requestInHooks = append(requestInHooks, grpcServer.RequestInHook)
-	requestModHooks = append(requestModHooks, grpcServer.RequestModHook)
-	requestOutHooks = append(requestOutHooks, grpcServer.RequestOutHook)
-	responseInHooks = append(responseInHooks, grpcServer.ResponseInHook)
-	responseModHooks = append(responseModHooks, grpcServer.ResponseModHook)
-	responseOutHooks = append(responseOutHooks, grpcServer.ResponseOutHook)
-
-	var domainRe *regexp.Regexp
-	if pb.DomainRe != "" {
-		var err error
-		domainRe, err = regexp.Compile(pb.DomainRe)
-		if err != nil {
-			return nil, err
-		}
-	}
 	excludedExtensions := defaultExcludedExtensions
 	if pb.ExcludedExtensions != nil {
-		excludedExtensions = pb.ExcludedExtensions
+		excludedExtensions = append([]string{}, pb.ExcludedExtensions...)
 	}
-	scope := scope.New(domainRe, excludedExtensions)
-	p.SetScope(scope.IsInScope)
+	// Initialize gRPC client manager and start the server and define gRPC hooks
+	config := &proxy.Config{
+		DBFile:    pb.DBFile,
+		PrintLogs: pb.PrintLogs,
+		SaveDir:   pb.SaveDir,
 
-	p.SetRequestInHooks(requestInHooks)
-	p.SetRequestModHooks(requestModHooks)
-	p.SetRequestOutHooks(requestOutHooks)
-	p.SetResponseInHooks(responseInHooks)
-	p.SetResponseModHooks(responseModHooks)
-	p.SetResponseOutHooks(responseOutHooks)
+		DomainRe:           pb.DomainRe,
+		ExcludedExtensions: excludedExtensions,
+
+		RequestInHooks:  requestInHooks,
+		RequestModHooks: requestModHooks,
+		RequestOutHooks: requestOutHooks,
+
+		ResponseInHooks:  responseInHooks,
+		ResponseModHooks: responseModHooks,
+		ResponseOutHooks: responseOutHooks,
+	}
+
+	grpcServer := grpc.NewServer(p, config)
+
+	config.RequestInHooks = append(config.RequestInHooks, grpcServer.RequestInHook)
+	config.RequestModHooks = append(config.RequestModHooks, grpcServer.RequestModHook)
+	config.RequestOutHooks = append(config.RequestOutHooks, grpcServer.RequestOutHook)
+	config.ResponseInHooks = append(config.ResponseInHooks, grpcServer.ResponseInHook)
+	config.ResponseModHooks = append(config.ResponseModHooks, grpcServer.ResponseModHook)
+	config.ResponseOutHooks = append(config.ResponseOutHooks, grpcServer.ResponseOutHook)
+
+	go grpcServer.Run()
+
+	if err := config.Apply(p); err != nil {
+		return nil, err
+	}
 
 	return &Proxy{Proxy: p}, nil
 }

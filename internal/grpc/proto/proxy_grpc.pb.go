@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.5.1
 // - protoc             v3.19.1
-// source: internal/grpc/proto/proxy.proto
+// source: proxy.proto
 
 package proto
 
@@ -25,6 +25,8 @@ const (
 	ProxyService_ResponseIn_FullMethodName  = "/proxy.ProxyService/ResponseIn"
 	ProxyService_ResponseMod_FullMethodName = "/proxy.ProxyService/ResponseMod"
 	ProxyService_ResponseOut_FullMethodName = "/proxy.ProxyService/ResponseOut"
+	ProxyService_SetConfig_FullMethodName   = "/proxy.ProxyService/SetConfig"
+	ProxyService_GetConfig_FullMethodName   = "/proxy.ProxyService/GetConfig"
 )
 
 // ProxyServiceClient is the client API for ProxyService service.
@@ -39,6 +41,8 @@ type ProxyServiceClient interface {
 	ResponseIn(ctx context.Context, in *Register, opts ...grpc.CallOption) (grpc.ServerStreamingClient[HttpResponse], error)
 	ResponseMod(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ResponseModClientMessage, HttpResponse], error)
 	ResponseOut(ctx context.Context, in *Register, opts ...grpc.CallOption) (grpc.ServerStreamingClient[HttpResponse], error)
+	SetConfig(ctx context.Context, in *Config, opts ...grpc.CallOption) (*Null, error)
+	GetConfig(ctx context.Context, in *Null, opts ...grpc.CallOption) (*Config, error)
 }
 
 type proxyServiceClient struct {
@@ -151,6 +155,26 @@ func (c *proxyServiceClient) ResponseOut(ctx context.Context, in *Register, opts
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type ProxyService_ResponseOutClient = grpc.ServerStreamingClient[HttpResponse]
 
+func (c *proxyServiceClient) SetConfig(ctx context.Context, in *Config, opts ...grpc.CallOption) (*Null, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Null)
+	err := c.cc.Invoke(ctx, ProxyService_SetConfig_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *proxyServiceClient) GetConfig(ctx context.Context, in *Null, opts ...grpc.CallOption) (*Config, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Config)
+	err := c.cc.Invoke(ctx, ProxyService_GetConfig_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ProxyServiceServer is the server API for ProxyService service.
 // All implementations must embed UnimplementedProxyServiceServer
 // for forward compatibility.
@@ -163,6 +187,8 @@ type ProxyServiceServer interface {
 	ResponseIn(*Register, grpc.ServerStreamingServer[HttpResponse]) error
 	ResponseMod(grpc.BidiStreamingServer[ResponseModClientMessage, HttpResponse]) error
 	ResponseOut(*Register, grpc.ServerStreamingServer[HttpResponse]) error
+	SetConfig(context.Context, *Config) (*Null, error)
+	GetConfig(context.Context, *Null) (*Config, error)
 	mustEmbedUnimplementedProxyServiceServer()
 }
 
@@ -190,6 +216,12 @@ func (UnimplementedProxyServiceServer) ResponseMod(grpc.BidiStreamingServer[Resp
 }
 func (UnimplementedProxyServiceServer) ResponseOut(*Register, grpc.ServerStreamingServer[HttpResponse]) error {
 	return status.Errorf(codes.Unimplemented, "method ResponseOut not implemented")
+}
+func (UnimplementedProxyServiceServer) SetConfig(context.Context, *Config) (*Null, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SetConfig not implemented")
+}
+func (UnimplementedProxyServiceServer) GetConfig(context.Context, *Null) (*Config, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetConfig not implemented")
 }
 func (UnimplementedProxyServiceServer) mustEmbedUnimplementedProxyServiceServer() {}
 func (UnimplementedProxyServiceServer) testEmbeddedByValue()                      {}
@@ -270,13 +302,58 @@ func _ProxyService_ResponseOut_Handler(srv interface{}, stream grpc.ServerStream
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type ProxyService_ResponseOutServer = grpc.ServerStreamingServer[HttpResponse]
 
+func _ProxyService_SetConfig_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Config)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ProxyServiceServer).SetConfig(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ProxyService_SetConfig_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ProxyServiceServer).SetConfig(ctx, req.(*Config))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ProxyService_GetConfig_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Null)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ProxyServiceServer).GetConfig(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ProxyService_GetConfig_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ProxyServiceServer).GetConfig(ctx, req.(*Null))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ProxyService_ServiceDesc is the grpc.ServiceDesc for ProxyService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var ProxyService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "proxy.ProxyService",
 	HandlerType: (*ProxyServiceServer)(nil),
-	Methods:     []grpc.MethodDesc{},
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "SetConfig",
+			Handler:    _ProxyService_SetConfig_Handler,
+		},
+		{
+			MethodName: "GetConfig",
+			Handler:    _ProxyService_GetConfig_Handler,
+		},
+	},
 	Streams: []grpc.StreamDesc{
 		{
 			StreamName:    "RequestIn",
@@ -311,5 +388,5 @@ var ProxyService_ServiceDesc = grpc.ServiceDesc{
 			ServerStreams: true,
 		},
 	},
-	Metadata: "internal/grpc/proto/proxy.proto",
+	Metadata: "proxy.proto",
 }

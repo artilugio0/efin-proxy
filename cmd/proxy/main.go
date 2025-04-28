@@ -10,7 +10,8 @@ import (
 )
 
 func main() {
-	proxyAddr := flag.String("l", ":8080", "Proxy listen address")
+	proxyAddr := flag.String("l", ":8080", "Proxy HTTP listen address")
+	grpcAddr := flag.String("g", ":50051", "Proxy GRPC listen address")
 	certFile := flag.String("cert", "", "Path to Root CA certificate file (PEM)")
 	keyFile := flag.String("key", "", "Path to Root CA private key file (PEM)")
 	saveDir := flag.String("d", "", "Directory to save request/response files (empty to disable)")
@@ -34,6 +35,7 @@ func main() {
 
 	proxy, err := (&proxyVibes.ProxyBuilder{
 		Addr:               *proxyAddr,
+		GRPCAddr:           *grpcAddr,
 		CertificateFile:    *certFile,
 		KeyFile:            *keyFile,
 		DBFile:             dbPath,

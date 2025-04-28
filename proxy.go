@@ -114,16 +114,18 @@ func (pb *ProxyBuilder) GetProxy() (*Proxy, error) {
 		ResponseOutHooks: responseOutHooks,
 	}
 
-	grpcServer := grpc.NewServer(p, config)
+	if pb.GRPCAddr != "" {
+		grpcServer := grpc.NewServer(pb.GRPCAddr, p, config)
 
-	config.RequestInHooks = append(config.RequestInHooks, grpcServer.RequestInHook)
-	config.RequestModHooks = append(config.RequestModHooks, grpcServer.RequestModHook)
-	config.RequestOutHooks = append(config.RequestOutHooks, grpcServer.RequestOutHook)
-	config.ResponseInHooks = append(config.ResponseInHooks, grpcServer.ResponseInHook)
-	config.ResponseModHooks = append(config.ResponseModHooks, grpcServer.ResponseModHook)
-	config.ResponseOutHooks = append(config.ResponseOutHooks, grpcServer.ResponseOutHook)
+		config.RequestInHooks = append(config.RequestInHooks, grpcServer.RequestInHook)
+		config.RequestModHooks = append(config.RequestModHooks, grpcServer.RequestModHook)
+		config.RequestOutHooks = append(config.RequestOutHooks, grpcServer.RequestOutHook)
+		config.ResponseInHooks = append(config.ResponseInHooks, grpcServer.ResponseInHook)
+		config.ResponseModHooks = append(config.ResponseModHooks, grpcServer.ResponseModHook)
+		config.ResponseOutHooks = append(config.ResponseOutHooks, grpcServer.ResponseOutHook)
 
-	go grpcServer.Run()
+		go grpcServer.Run()
+	}
 
 	if err := config.Apply(p); err != nil {
 		return nil, err

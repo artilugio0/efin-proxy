@@ -48,6 +48,8 @@ type responsesChannels struct {
 type Server struct {
 	proto.UnimplementedProxyServiceServer
 
+	addr string
+
 	proxy       *proxy.Proxy
 	configMutex sync.RWMutex
 	config      *proxy.Config
@@ -71,8 +73,9 @@ type Server struct {
 	responseOutClients      map[string]*responsesReadOnlyChannels
 }
 
-func NewServer(p *proxy.Proxy, config *proxy.Config) *Server {
+func NewServer(addr string, p *proxy.Proxy, config *proxy.Config) *Server {
 	server := &Server{
+		addr:        addr,
 		proxy:       p,
 		config:      config,
 		configMutex: sync.RWMutex{},
@@ -101,7 +104,7 @@ func NewServer(p *proxy.Proxy, config *proxy.Config) *Server {
 
 func (s *Server) Run() {
 	// Listen on a TCP port.
-	lis, err := net.Listen("tcp", ":50051")
+	lis, err := net.Listen("tcp", s.addr)
 	if err != nil {
 		log.Fatalf("Failed to listen: %v", err)
 	}
@@ -116,7 +119,7 @@ func (s *Server) Run() {
 	// Register the ProxyService implementation.
 	proto.RegisterProxyServiceServer(gs, s)
 
-	log.Println("Starting gRPC Server on :50051")
+	log.Printf("Starting gRPC Server on %s", s.addr)
 	if err := gs.Serve(lis); err != nil {
 		log.Fatalf("Failed to serve: %v", err)
 	}

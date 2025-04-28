@@ -129,7 +129,7 @@ func (pb *ProxyBuilder) GetProxy() (*Proxy, error) {
 		return nil, err
 	}
 
-	return &Proxy{Proxy: p}, nil
+	return &Proxy{Addr: pb.Addr, Proxy: p}, nil
 }
 
 type Proxy struct {
@@ -139,7 +139,7 @@ type Proxy struct {
 
 func (p *Proxy) ListenAndServe() error {
 	server := &http.Server{
-		Addr: ":8080",
+		Addr: p.Addr,
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.Method == http.MethodConnect {
 				p.HandleConnect(w, r)

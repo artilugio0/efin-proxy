@@ -10,6 +10,7 @@ import (
 )
 
 func main() {
+	proxyAddr := flag.String("l", ":8080", "Proxy listen address")
 	certFile := flag.String("cert", "", "Path to Root CA certificate file (PEM)")
 	keyFile := flag.String("key", "", "Path to Root CA private key file (PEM)")
 	saveDir := flag.String("d", "", "Directory to save request/response files (empty to disable)")
@@ -32,6 +33,7 @@ func main() {
 	}
 
 	proxy, err := (&proxyVibes.ProxyBuilder{
+		Addr:               *proxyAddr,
 		CertificateFile:    *certFile,
 		KeyFile:            *keyFile,
 		DBFile:             dbPath,
@@ -45,6 +47,6 @@ func main() {
 		panic(err)
 	}
 
-	log.Printf("Starting HTTP proxy server on :8080")
+	log.Printf("Starting HTTP proxy server on %s", *proxyAddr)
 	log.Fatal(proxy.ListenAndServe())
 }

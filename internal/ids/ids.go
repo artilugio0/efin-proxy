@@ -3,6 +3,8 @@ package ids
 import (
 	"context"
 	"net/http"
+
+	"github.com/google/uuid"
 )
 
 type requestIDKeyType struct{}
@@ -30,4 +32,18 @@ func GetResponseID(resp *http.Response) string {
 		}
 	}
 	return "" // Return empty string if no ID found or no request
+}
+
+type IDProvider interface {
+	NextID() string
+}
+
+type DefaultProvider struct{}
+
+func NewDefaultProvider() DefaultProvider {
+	return DefaultProvider{}
+}
+
+func (dp DefaultProvider) NextID() string {
+	return uuid.New().String()
 }

@@ -6,11 +6,14 @@ import (
 	"regexp"
 
 	"github.com/artilugio0/proxy-vibes/internal/hooks"
+	"github.com/artilugio0/proxy-vibes/internal/ids"
 	"github.com/artilugio0/proxy-vibes/internal/pipeline"
 	"github.com/artilugio0/proxy-vibes/internal/scope"
 )
 
 type Config struct {
+	IDProvider ids.IDProvider
+
 	DBFile    string
 	PrintLogs bool
 	SaveDir   string
@@ -50,10 +53,20 @@ func (c *Config) Apply(p *Proxy) error {
 
 	// Add database save hooks if database is initialized
 	if c.DBFile != "" {
+		// this might cause some requests with repeated ids
+		// TODO: handle error
+		idProvider, err := hooks.NewDBIDProvider(c.DBFile)
+		if err != nil {
+			return err
+		}
+		p.SetIDProvider(idProvider)
+
 		saveRequest, saveResponse := hooks.NewDBSaveHooks(c.DBFile)
 		requestOutHooks = append(requestOutHooks, saveRequest)
 		responseInHooks = append(responseInHooks, saveResponse)
 		log.Printf("Saving requests and responses to database at %s", c.DBFile)
+	} else {
+		p.SetIDProvider(ids.NewDefaultProvider())
 	}
 
 	// Add file save hooks if directory is specified

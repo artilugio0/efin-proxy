@@ -7,7 +7,9 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/artilugio0/proxy-vibes/internal/ids"
@@ -19,24 +21,22 @@ import (
 func InitDatabase(db *sql.DB) error {
 	_, err := db.Exec(`
         CREATE TABLE IF NOT EXISTS requests (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            request_id TEXT NOT NULL UNIQUE,
+            request_id INTEGER PRIMARY KEY AUTOINCREMENT,
             method TEXT NOT NULL,
             url TEXT NOT NULL,
             body TEXT,
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
         );
         CREATE TABLE IF NOT EXISTS responses (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            response_id TEXT NOT NULL,
+            response_id INTEGER PRIMARY KEY AUTOINCREMENT,
             status_code INTEGER NOT NULL,
             body TEXT,
             content_length INTEGER
         );
         CREATE TABLE IF NOT EXISTS headers (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            request_id TEXT,
-            response_id TEXT,
+            request_id INTEGER,
+            response_id INTEGER,
             name TEXT NOT NULL,
             value TEXT NOT NULL,
             FOREIGN KEY (request_id) REFERENCES requests(request_id),
@@ -44,8 +44,8 @@ func InitDatabase(db *sql.DB) error {
         );
         CREATE TABLE IF NOT EXISTS cookies (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            request_id TEXT,
-            response_id TEXT,
+            request_id INTEGER,
+            response_id INTEGER,
             name TEXT NOT NULL,
             value TEXT NOT NULL,
             FOREIGN KEY (request_id) REFERENCES requests(request_id),
@@ -144,7 +144,11 @@ func NewDBSaveHooks(dbFile string) (pipeline.ReadOnlyHook[*http.Request], pipeli
 
 // saveRequestToDB performs the actual database insert for a request with retries
 func saveRequestToDB(dbFile string, req *http.Request) error {
-	id := ids.GetRequestID(req)
+	strId := ids.GetRequestID(req)
+	id, err := strconv.ParseUint(strId, 10, 64)
+	if err != nil {
+		return fmt.Errorf("invalid non-numeric request id: %s", strId)
+	}
 
 	// Get body
 	var body []byte
@@ -159,7 +163,7 @@ func saveRequestToDB(dbFile string, req *http.Request) error {
 
 	const maxRetries = 5
 
-	err := retry(maxRetries, func() (bool, error) {
+	err = retry(maxRetries, func() (bool, error) {
 		db, err := sql.Open("sqlite", dbFile)
 		if err != nil {
 			log.Printf("Failed to open SQLite database: %v", err)
@@ -180,41 +184,43 @@ func saveRequestToDB(dbFile string, req *http.Request) error {
 				INSERT INTO requests (request_id, method, url, body)
 				VALUES (?, ?, ?, ?)
 			`, id, req.Method, req.URL.String(), string(body))
-			if err == nil {
-				// Insert headers, including Host if present
-				for name, values := range req.Header {
-					for _, value := range values {
-						_, err = tx.Exec(`
+			if err != nil {
+				return err
+			}
+
+			// Insert headers, including Host if present
+			for name, values := range req.Header {
+				for _, value := range values {
+					_, err = tx.Exec(`
                         INSERT INTO headers (request_id, response_id, name, value)
                         VALUES (?, NULL, ?, ?)
                     `, id, name, value)
-						if err != nil {
-							return err
-						}
-					}
-				}
-
-				// Explicitly save the Host header if it’s set and not already in Header map
-				if req.Host != "" && req.Header.Get("Host") == "" {
-					_, err = tx.Exec(`
-                    INSERT INTO headers (request_id, response_id, name, value)
-                    VALUES (?, NULL, ?, ?)
-                `, id, "Host", req.Host)
 					if err != nil {
 						return err
 					}
 				}
+			}
 
-				// Insert cookies from Cookie header
-				if cookies := req.Cookies(); len(cookies) > 0 {
-					for _, cookie := range cookies {
-						_, err = tx.Exec(`
+			// Explicitly save the Host header if it’s set and not already in Header map
+			if req.Host != "" && req.Header.Get("Host") == "" {
+				_, err = tx.Exec(`
+                    INSERT INTO headers (request_id, response_id, name, value)
+                    VALUES (?, NULL, ?, ?)
+                `, id, "Host", req.Host)
+				if err != nil {
+					return err
+				}
+			}
+
+			// Insert cookies from Cookie header
+			if cookies := req.Cookies(); len(cookies) > 0 {
+				for _, cookie := range cookies {
+					_, err = tx.Exec(`
                         INSERT INTO cookies (request_id, response_id, name, value)
                         VALUES (?, NULL, ?, ?)
                     `, id, cookie.Name, cookie.Value)
-						if err != nil {
-							return err
-						}
+					if err != nil {
+						return err
 					}
 				}
 			}
@@ -249,7 +255,11 @@ func saveRequestToDB(dbFile string, req *http.Request) error {
 
 // saveResponseToDB performs the actual database insert for a response with retries
 func saveResponseToDB(dbFile string, resp *http.Response) error {
-	id := ids.GetResponseID(resp)
+	strId := ids.GetResponseID(resp)
+	id, err := strconv.ParseUint(strId, 10, 64)
+	if err != nil {
+		return fmt.Errorf("invalid non-numeric response id: %s", strId)
+	}
 
 	// Get body
 	var body []byte
@@ -263,7 +273,7 @@ func saveResponseToDB(dbFile string, resp *http.Response) error {
 	}
 
 	const maxRetries = 5
-	err := retry(maxRetries, func() (bool, error) {
+	err = retry(maxRetries, func() (bool, error) {
 		db, err := sql.Open("sqlite", dbFile)
 		if err != nil {
 			log.Printf("Failed to open SQLite database: %v", err)
@@ -289,37 +299,39 @@ func saveResponseToDB(dbFile string, resp *http.Response) error {
 				INSERT INTO responses (response_id, status_code, body, content_length)
 				VALUES (?, ?, ?, ?)
 			`, id, resp.StatusCode, string(body), contentLength)
-			if err == nil {
-				// Insert headers
-				for name, values := range resp.Header {
-					for _, value := range values {
-						_, err = tx.Exec(`
+			if err != nil {
+				return err
+			}
+
+			// Insert headers
+			for name, values := range resp.Header {
+				for _, value := range values {
+					_, err = tx.Exec(`
 							INSERT INTO headers (request_id, response_id, name, value)
 							VALUES (NULL, ?, ?, ?)
 						`, id, name, value)
-						if err != nil {
-							return err
-						}
+					if err != nil {
+						return err
 					}
 				}
+			}
 
-				// Insert cookies from Set-Cookie header
-				if setCookies := resp.Header["Set-Cookie"]; len(setCookies) > 0 {
-					for _, setCookie := range setCookies {
-						parts := bytes.SplitN([]byte(setCookie), []byte("="), 2)
-						if len(parts) == 2 {
-							name := string(parts[0])
-							value := string(parts[1])
-							if semicolon := bytes.IndexByte([]byte(value), ';'); semicolon != -1 {
-								value = value[:semicolon]
-							}
-							_, err = tx.Exec(`
+			// Insert cookies from Set-Cookie header
+			if setCookies := resp.Header["Set-Cookie"]; len(setCookies) > 0 {
+				for _, setCookie := range setCookies {
+					parts := bytes.SplitN([]byte(setCookie), []byte("="), 2)
+					if len(parts) == 2 {
+						name := string(parts[0])
+						value := string(parts[1])
+						if semicolon := bytes.IndexByte([]byte(value), ';'); semicolon != -1 {
+							value = value[:semicolon]
+						}
+						_, err = tx.Exec(`
 								INSERT INTO cookies (request_id, response_id, name, value)
 								VALUES (NULL, ?, ?, ?)
 							`, id, name, value)
-							if err != nil {
-								return err
-							}
+						if err != nil {
+							return err
 						}
 					}
 				}
@@ -372,4 +384,44 @@ func retry(attempts int, f func() (bool, error)) error {
 	}
 
 	return err
+}
+
+type DBIDProvider struct {
+	lastUsedID      uint64
+	lastUsedIDMutex sync.Mutex
+}
+
+func NewDBIDProvider(dbFile string) (*DBIDProvider, error) {
+	db, err := sql.Open("sqlite", dbFile)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to open SQLite database: %v", err)
+	}
+	defer db.Close()
+
+	err = InitDatabase(db)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to initialize database: %v", err)
+	}
+
+	query := "SELECT request_id FROM requests ORDER BY request_id DESC LIMIT 1"
+	row := db.QueryRow(query)
+	prov := DBIDProvider{
+		lastUsedIDMutex: sync.Mutex{},
+	}
+	if err := row.Scan(&prov.lastUsedID); err != nil {
+		if err != sql.ErrNoRows {
+			return nil, err
+		}
+	}
+
+	return &prov, nil
+}
+
+func (dip *DBIDProvider) NextID() string {
+	dip.lastUsedIDMutex.Lock()
+	dip.lastUsedID++
+	id := dip.lastUsedID
+	dip.lastUsedIDMutex.Unlock()
+
+	return strconv.FormatUint(id, 10)
 }

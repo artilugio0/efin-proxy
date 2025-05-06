@@ -17,7 +17,6 @@ import (
 	"github.com/artilugio0/proxy-vibes/internal/ids"
 	"github.com/artilugio0/proxy-vibes/internal/pipeline"
 	"github.com/artilugio0/proxy-vibes/internal/websockets"
-	"github.com/google/uuid"
 )
 
 // InScopeFunc defines the signature for determining if a request is in scope
@@ -25,6 +24,9 @@ type InScopeFunc func(*http.Request) bool
 
 // Proxy struct holds the proxy configuration with pipelines and scope function
 type Proxy struct {
+	idProvider      ids.IDProvider
+	idProviderMutex sync.RWMutex
+
 	requestInPipeline   *pipeline.ReadOnlyPipeline[*http.Request]  // First request pipeline: read-only
 	requestModPipeline  *pipeline.ModPipeline[*http.Request]       // Second request pipeline: read/write
 	requestOutPipeline  *pipeline.ReadOnlyPipeline[*http.Request]  // Third request pipeline: read-only
@@ -46,6 +48,9 @@ type Proxy struct {
 // NewProxy creates a new proxy instance with empty pipelines and default in-scope function
 func NewProxy(rootCA *x509.Certificate, rootKey *rsa.PrivateKey) *Proxy {
 	p := &Proxy{
+		idProvider:      ids.NewDefaultProvider(),
+		idProviderMutex: sync.RWMutex{},
+
 		requestInPipeline:   pipeline.NewReadOnlyPipeline[*http.Request](nil),
 		requestModPipeline:  pipeline.NewModPipeline[*http.Request](nil),
 		requestOutPipeline:  pipeline.NewReadOnlyPipeline[*http.Request](nil),
@@ -77,7 +82,9 @@ func NewProxy(rootCA *x509.Certificate, rootKey *rsa.PrivateKey) *Proxy {
 // ServeHTTP handles incoming HTTP requests and responses with scope checking
 func (p *Proxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	// Generate UUID v4 and add to request context
-	id := uuid.New().String() // UUID v4
+	p.idProviderMutex.RLock()
+	id := p.idProvider.NextID()
+	p.idProviderMutex.RUnlock()
 	req = ids.SetRequestID(req, id)
 
 	var finalReq *http.Request
@@ -131,7 +138,9 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 // HandleConnect handles HTTPS CONNECT requests with MITM and pipeline processing
 func (p *Proxy) HandleConnect(w http.ResponseWriter, req *http.Request) {
 	// Generate UUID v4 for the initial CONNECT request (optional, for tracking the tunnel itself)
-	id := uuid.New().String()
+	p.idProviderMutex.RLock()
+	id := p.idProvider.NextID()
+	p.idProviderMutex.RUnlock()
 	req = ids.SetRequestID(req, id)
 
 	destConn, err := net.Dial("tcp", req.URL.Host)
@@ -189,7 +198,9 @@ func (p *Proxy) HandleConnect(w http.ResponseWriter, req *http.Request) {
 			}
 
 			// Generate a new UUID v4 for each tunneled request
-			reqID := uuid.New().String()
+			p.idProviderMutex.RLock()
+			reqID := p.idProvider.NextID()
+			p.idProviderMutex.RUnlock()
 			httpReq = ids.SetRequestID(httpReq, reqID)
 
 			if websockets.IsWebSocketRequest(httpReq) {
@@ -322,6 +333,12 @@ func (p *Proxy) SetScope(scope InScopeFunc) {
 	p.inScopeFuncMutex.Lock()
 	p.inScopeFunc = scope
 	p.inScopeFuncMutex.Unlock()
+}
+
+func (p *Proxy) SetIDProvider(idp ids.IDProvider) {
+	p.idProviderMutex.Lock()
+	p.idProvider = idp
+	p.idProviderMutex.Unlock()
 }
 
 // generateCert generates a certificate for a given host, caching it

@@ -1,6 +1,6 @@
-# Proxy-Vibes
+# Efin Proxy
 
-**Proxy-Vibes** is a lightweight, CLI-focused HTTP/HTTPS intercepting proxy written in Go, designed for simplicity and extensibility. It is tailored for users who prefer command-line applications, offering a straightforward way to inspect, modify, and log HTTP traffic. The proxy supports a powerful plugin system using gRPC, allowing developers to hook into the request and response lifecycle for custom processing.
+**Efin Proxy** is a lightweight, CLI-focused HTTP/HTTPS intercepting proxy written in Go, designed for simplicity and extensibility. It is tailored for users who prefer command-line applications, offering a straightforward way to inspect, modify, and log HTTP traffic. The proxy supports a powerful plugin system using gRPC, allowing developers to hook into the request and response lifecycle for custom processing.
 
 Status: alpha
 
@@ -18,18 +18,18 @@ Status: alpha
 1. Ensure you have [Go](https://golang.org/) installed (version 1.24 or later).
 2. Clone the repository:
 ```bash
-git clone https://github.com/artilugio0/proxy-vibes.git
-cd proxy-vibes
+git clone https://github.com/artilugio0/efin-proxy.git
+cd efin-proxy
 ```
 3. Build the proxy:
 ```bash
-go build -o proxy-vibes ./cmd/proxy
+go build -o efin-proxy ./cmd/proxy
 ```
 
 ## Usage
 Run the proxy with default settings:
 ```bash
-./proxy-vibes
+./efin-proxy
 ```
 
 The proxy listens on :8080 by default. Configure your browser or application to use localhost:8080 as the proxy.
@@ -54,7 +54,7 @@ The proxy supports the following flags to customize its behavior:
 
 Example command with multiple flags:
 ```bash
-./proxy-vibes -cert root-ca.crt -key root-ca.key -d ./logs -D proxy.db -p -s "example\.com$" -e png,jpg
+./efin-proxy -cert root-ca.crt -key root-ca.key -d ./logs -D proxy.db -p -s "example\.com$" -e png,jpg
 ```
 
 ## gRPC Plugin System

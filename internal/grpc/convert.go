@@ -5,8 +5,8 @@ import (
 	"io"
 	"net/http"
 
-	pb "github.com/artilugio0/efin-proxy/internal/grpc/proto"
 	"github.com/artilugio0/efin-proxy/internal/ids"
+	pb "github.com/artilugio0/efin-proxy/pkg/grpc/proto"
 )
 
 // ToProtoRequest converts an http.Request to a proto HttpRequest.

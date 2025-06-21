@@ -13,8 +13,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/artilugio0/proxy-vibes/internal/certs"
-	"github.com/artilugio0/proxy-vibes/internal/pipeline"
+	"github.com/artilugio0/efin-proxy/internal/certs"
+	"github.com/artilugio0/efin-proxy/internal/pipeline"
 	"github.com/gorilla/websocket"
 )
 

@@ -8,8 +8,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/artilugio0/proxy-vibes/internal/ids"
-	"github.com/artilugio0/proxy-vibes/internal/pipeline"
+	"github.com/artilugio0/efin-proxy/internal/ids"
+	"github.com/artilugio0/efin-proxy/internal/pipeline"
 )
 
 // RawRequestBytes generates the raw HTTP bytes for a request

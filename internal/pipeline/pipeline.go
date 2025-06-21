@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/artilugio0/proxy-vibes/internal/httpbytes"
+	"github.com/artilugio0/efin-proxy/internal/httpbytes"
 )
 
 // ReadOnlyHook defines a hook that processes an item without modifying it.

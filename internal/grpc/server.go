@@ -10,9 +10,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/artilugio0/proxy-vibes/internal/grpc/proto"
-	"github.com/artilugio0/proxy-vibes/internal/httpbytes"
-	"github.com/artilugio0/proxy-vibes/internal/proxy"
+	"github.com/artilugio0/efin-proxy/internal/grpc/proto"
+	"github.com/artilugio0/efin-proxy/internal/httpbytes"
+	"github.com/artilugio0/efin-proxy/internal/proxy"
 	"google.golang.org/grpc"
 )
 

@@ -10,7 +10,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	pb "github.com/artilugio0/proxy-vibes/internal/grpc/proto"
+	pb "github.com/artilugio0/efin-proxy/internal/grpc/proto"
 )
 
 func main() {

@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package proxy;
 
-option go_package = "github.com/artilugio0/proxy-vibes/internal/grpc/proto";
+option go_package = "github.com/artilugio0/efin-proxy/internal/grpc/proto";
 
 // ProxyService defines the gRPC service for client registration and communication.
 service ProxyService {

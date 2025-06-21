@@ -12,11 +12,11 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/artilugio0/proxy-vibes/internal/certs"
-	"github.com/artilugio0/proxy-vibes/internal/httpbytes"
-	"github.com/artilugio0/proxy-vibes/internal/ids"
-	"github.com/artilugio0/proxy-vibes/internal/pipeline"
-	"github.com/artilugio0/proxy-vibes/internal/websockets"
+	"github.com/artilugio0/efin-proxy/internal/certs"
+	"github.com/artilugio0/efin-proxy/internal/httpbytes"
+	"github.com/artilugio0/efin-proxy/internal/ids"
+	"github.com/artilugio0/efin-proxy/internal/pipeline"
+	"github.com/artilugio0/efin-proxy/internal/websockets"
 )
 
 // InScopeFunc defines the signature for determining if a request is in scope

@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/artilugio0/proxy-vibes/internal/ids"
+	"github.com/artilugio0/efin-proxy/internal/ids"
 )
 
 func TestRawRequestBytes(t *testing.T) {
@@ -176,7 +176,7 @@ func TestSaveHooks(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create temporary directory
-			tempDir, err := os.MkdirTemp("", "proxy-vibes-test")
+			tempDir, err := os.MkdirTemp("", "efin-proxy-test")
 			if err != nil {
 				t.Fatalf("Failed to create temp dir: %v", err)
 			}

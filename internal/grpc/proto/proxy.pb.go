@@ -588,7 +588,7 @@ const file_proxy_proto_rawDesc = "" +
 	"\vResponseMod\x12\x1f.proxy.ResponseModClientMessage\x1a\x13.proxy.HttpResponse\"\x00(\x010\x01\x127\n" +
 	"\vResponseOut\x12\x0f.proxy.Register\x1a\x13.proxy.HttpResponse\"\x000\x01\x12)\n" +
 	"\tSetConfig\x12\r.proxy.Config\x1a\v.proxy.Null\"\x00\x12)\n" +
-	"\tGetConfig\x12\v.proxy.Null\x1a\r.proxy.Config\"\x00B7Z5github.com/artilugio0/proxy-vibes/internal/grpc/protob\x06proto3"
+	"\tGetConfig\x12\v.proxy.Null\x1a\r.proxy.Config\"\x00B6Z4github.com/artilugio0/efin-proxy/internal/grpc/protob\x06proto3"
 
 var (
 	file_proxy_proto_rawDescOnce sync.Once

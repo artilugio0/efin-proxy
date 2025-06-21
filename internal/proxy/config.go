@@ -5,10 +5,10 @@ import (
 	"net/http"
 	"regexp"
 
-	"github.com/artilugio0/proxy-vibes/internal/hooks"
-	"github.com/artilugio0/proxy-vibes/internal/ids"
-	"github.com/artilugio0/proxy-vibes/internal/pipeline"
-	"github.com/artilugio0/proxy-vibes/internal/scope"
+	"github.com/artilugio0/efin-proxy/internal/hooks"
+	"github.com/artilugio0/efin-proxy/internal/ids"
+	"github.com/artilugio0/efin-proxy/internal/pipeline"
+	"github.com/artilugio0/efin-proxy/internal/scope"
 )
 
 type Config struct {

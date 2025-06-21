@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/artilugio0/proxy-vibes/internal/ids"
+	"github.com/artilugio0/efin-proxy/internal/ids"
 	_ "modernc.org/sqlite" // SQLite driver
 )
 

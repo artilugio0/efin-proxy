@@ -1,4 +1,4 @@
-module github.com/artilugio0/proxy-vibes
+module github.com/artilugio0/efin-proxy
 
 go 1.24.1
 

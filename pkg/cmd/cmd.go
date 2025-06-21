@@ -5,7 +5,7 @@ import (
 	"os"
 	"strings"
 
-	proxyVibes "github.com/artilugio0/proxy-vibes"
+	efinProxy "github.com/artilugio0/efin-proxy"
 	"github.com/spf13/cobra"
 )
 
@@ -50,7 +50,7 @@ func NewProxyCmd(use string) *cobra.Command {
 				excludedExtensionsList = strings.Split(excludedExtensions, ",")
 			}
 
-			proxy, err := (&proxyVibes.ProxyBuilder{
+			proxy, err := (&efinProxy.ProxyBuilder{
 				Addr:               proxyAddr,
 				GRPCAddr:           grpcAddr,
 				CertificateFile:    certFile,

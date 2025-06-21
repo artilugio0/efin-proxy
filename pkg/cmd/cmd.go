@@ -13,7 +13,7 @@ const (
 	DefaultAddr              string = "127.0.0.1:8669"
 	DefaultCertFile          string = ""
 	DefaultDBFile            string = ""
-	DefaultExcludeExtensions string = "png|gif|jpeg|jpg|aac|ts"
+	DefaultExcludeExtensions string = "png,gif,jpeg,jpg,aac,ts"
 	DefaultGRPCAddr          string = "127.0.0.1:8670"
 	DefaultKeyFile           string = ""
 	DefaultPrint             bool   = false

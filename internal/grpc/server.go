@@ -188,7 +188,7 @@ func (s *Server) RequestMod(stream proto.ProxyService_RequestModServer) error {
 			return nil
 		}
 
-		modReq, err := FromProtoRequest(modRequestMsg.ModifiedRequest)
+		modReq, err := FromProtoRequest(modRequestMsg.ModifiedRequest, r)
 		if err != nil {
 			log.Printf("Request mod stream: client sent an invalid request: %v", err)
 			return nil
@@ -518,15 +518,17 @@ FOR:
 			asyncCloseChannel(client.originalRequests)
 		}
 
-		r := <-client.modifiedRequests
-		if r == nil {
+		modR := <-client.modifiedRequests
+		if modR == nil {
 			log.Printf("Empty response, client '%s' removed", client.name)
 			s.requestModClientsMutex.Lock()
 			delete(s.requestModClients, client.name)
 			s.requestModClientsMutex.Unlock()
 
 			asyncCloseChannel(client.originalRequests)
+			return r, nil
 		}
+		r = modR
 	}
 
 	return r, nil
@@ -633,15 +635,17 @@ FOR:
 			continue FOR
 		}
 
-		r := <-client.modifiedResponses
-		if r == nil {
+		modR := <-client.modifiedResponses
+		if modR == nil {
 			log.Printf("Empty response, client '%s' removed", client.name)
 			s.responseModClientsMutex.Lock()
 			delete(s.responseModClients, client.name)
 			s.responseModClientsMutex.Unlock()
 
 			asyncCloseChannel(client.originalResponses)
+			return r, nil
 		}
+		r = modR
 	}
 
 	return r, nil

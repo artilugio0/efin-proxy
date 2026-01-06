@@ -236,7 +236,7 @@ func saveRequestToDB(dbFile string, req *http.Request) error {
 		if err != nil {
 			// Check if error is due to database lock (SQLITE_BUSY)
 			if sqliteErr, ok := err.(*sqlite.Error); ok && strings.Contains(strings.ToLower(sqlite.ErrorCodeString[sqliteErr.Code()]), "busy") {
-				log.Printf("Database locked for request %s, retrying...: %v", id, err)
+				log.Printf("Database locked for request %v, retrying...: %v", id, err)
 				return true, err
 			}
 
@@ -348,7 +348,7 @@ func saveResponseToDB(dbFile string, resp *http.Response) error {
 		if err != nil {
 			// Check if error is due to database lock (SQLITE_BUSY)
 			if sqliteErr, ok := err.(*sqlite.Error); ok && strings.Contains(strings.ToLower(sqlite.ErrorCodeString[sqliteErr.Code()]), "busy") {
-				log.Printf("Database locked for response %s, retrying...: %v", id, err)
+				log.Printf("Database locked for response %v, retrying...: %v", id, err)
 				return true, err
 			}
 

@@ -75,12 +75,14 @@ func TestSaveRequestToDB(t *testing.T) {
 		t.Fatalf("InitDatabase failed: %v", err)
 	}
 
+	reqID := "100"
+
 	// Create a sample request
 	req := httptest.NewRequest("GET", "http://example.com/path", strings.NewReader("test body"))
 	req.Header.Set("User-Agent", "test-agent")
 	req.Header.Set("Cookie", "session=abc123")
 	req.Host = "example.com" // Set Host field explicitly
-	req = ids.SetRequestID(req, "test-request-id")
+	req = ids.SetRequestID(req, reqID)
 
 	// Save the request
 	err = saveRequestToDB(dbFile, req)
@@ -91,7 +93,7 @@ func TestSaveRequestToDB(t *testing.T) {
 	// Verify request data
 	var method, url, body string
 	var timestamp time.Time
-	err = db.QueryRow("SELECT method, url, body, timestamp FROM requests WHERE request_id = ?", "test-request-id").Scan(&method, &url, &body, &timestamp)
+	err = db.QueryRow("SELECT method, url, body, timestamp FROM requests WHERE request_id = ?", reqID).Scan(&method, &url, &body, &timestamp)
 	if err != nil {
 		t.Fatalf("Failed to query request: %v", err)
 	}
@@ -101,7 +103,7 @@ func TestSaveRequestToDB(t *testing.T) {
 
 	// Verify headers (including Host)
 	headers := map[string]string{}
-	rows, err := db.Query("SELECT name, value FROM headers WHERE request_id = ?", "test-request-id")
+	rows, err := db.Query("SELECT name, value FROM headers WHERE request_id = ?", reqID)
 	if err != nil {
 		t.Fatalf("Failed to query headers: %v", err)
 	}
@@ -125,7 +127,7 @@ func TestSaveRequestToDB(t *testing.T) {
 
 	// Verify cookies
 	cookies := map[string]string{}
-	rows, err = db.Query("SELECT name, value FROM cookies WHERE request_id = ?", "test-request-id")
+	rows, err = db.Query("SELECT name, value FROM cookies WHERE request_id = ?", reqID)
 	if err != nil {
 		t.Fatalf("Failed to query cookies: %v", err)
 	}
@@ -162,6 +164,8 @@ func TestSaveResponseToDB(t *testing.T) {
 		t.Fatalf("InitDatabase failed: %v", err)
 	}
 
+	respID := "100"
+
 	// Create a sample response
 	w := httptest.NewRecorder()
 	w.Header().Set("Content-Type", "text/plain")
@@ -170,7 +174,7 @@ func TestSaveResponseToDB(t *testing.T) {
 	w.Write([]byte("response body"))
 	resp := w.Result()
 	resp.Request = httptest.NewRequest("GET", "http://example.com", nil)
-	resp.Request = ids.SetRequestID(resp.Request, "test-response-id")
+	resp.Request = ids.SetRequestID(resp.Request, respID)
 
 	// Save the response
 	err = saveResponseToDB(dbFile, resp)
@@ -182,7 +186,7 @@ func TestSaveResponseToDB(t *testing.T) {
 	var statusCode int
 	var body string
 	var contentLength int64
-	err = db.QueryRow("SELECT status_code, body, content_length FROM responses WHERE response_id = ?", "test-response-id").Scan(&statusCode, &body, &contentLength)
+	err = db.QueryRow("SELECT status_code, body, content_length FROM responses WHERE response_id = ?", respID).Scan(&statusCode, &body, &contentLength)
 	if err != nil {
 		t.Fatalf("Failed to query response: %v", err)
 	}
@@ -192,7 +196,7 @@ func TestSaveResponseToDB(t *testing.T) {
 
 	// Verify headers
 	headers := map[string]string{}
-	rows, err := db.Query("SELECT name, value FROM headers WHERE response_id = ?", "test-response-id")
+	rows, err := db.Query("SELECT name, value FROM headers WHERE response_id = ?", respID)
 	if err != nil {
 		t.Fatalf("Failed to query headers: %v", err)
 	}
@@ -213,7 +217,7 @@ func TestSaveResponseToDB(t *testing.T) {
 
 	// Verify cookies
 	cookies := map[string]string{}
-	rows, err = db.Query("SELECT name, value FROM cookies WHERE response_id = ?", "test-response-id")
+	rows, err = db.Query("SELECT name, value FROM cookies WHERE response_id = ?", respID)
 	if err != nil {
 		t.Fatalf("Failed to query cookies: %v", err)
 	}

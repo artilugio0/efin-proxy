@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Navigate to the project root directory (assuming script is run from scripts/)
 cd "$(dirname "$0")/.."

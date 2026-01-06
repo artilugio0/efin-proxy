@@ -1,6 +1,6 @@
 module github.com/artilugio0/efin-proxy
 
-go 1.24.1
+go 1.25.5
 
 require github.com/kataras/iris/v12 v12.2.11
 

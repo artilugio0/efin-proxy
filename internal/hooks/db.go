@@ -51,14 +51,17 @@ func InitDatabase(db *sql.DB) error {
             FOREIGN KEY (request_id) REFERENCES requests(request_id),
             FOREIGN KEY (response_id) REFERENCES responses(response_id)
         );
-        CREATE INDEX IF NOT EXISTS idx_requests_request_id ON requests (request_id);
-        CREATE INDEX IF NOT EXISTS idx_responses_request_id ON responses (response_id);
         CREATE INDEX IF NOT EXISTS idx_requests_url ON requests (url);
         CREATE INDEX IF NOT EXISTS idx_responses_status_code ON responses (status_code);
         CREATE INDEX IF NOT EXISTS idx_headers_name ON headers (name);
         CREATE INDEX IF NOT EXISTS idx_headers_value ON headers (value);
         CREATE INDEX IF NOT EXISTS idx_cookies_name ON cookies (name);
         CREATE INDEX IF NOT EXISTS idx_cookies_value ON cookies (value);
+
+        CREATE INDEX IF NOT EXISTS idx_cookies_request_id ON cookies(request_id);
+        CREATE INDEX IF NOT EXISTS idx_cookies_response_id ON cookies(response_id);
+        CREATE INDEX IF NOT EXISTS idx_headers_request_id ON headers(request_id);
+        CREATE INDEX IF NOT EXISTS idx_headers_response_id ON headers(response_id);
     `)
 	return err
 }

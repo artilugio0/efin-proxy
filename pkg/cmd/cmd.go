@@ -5,21 +5,22 @@ import (
 	"os"
 	"strings"
 
-	efinProxy "github.com/artilugio0/efin-proxy"
+	efinproxy "github.com/artilugio0/efin-proxy"
 	"github.com/spf13/cobra"
 )
 
 const (
-	DefaultAddr              string = "127.0.0.1:8669"
-	DefaultCertFile          string = ""
-	DefaultDBFile            string = ""
-	DefaultExcludeExtensions string = "png,gif,jpeg,jpg,aac,ts"
-	DefaultGRPCAddr          string = "127.0.0.1:8670"
-	DefaultKeyFile           string = ""
-	DefaultPrint             bool   = false
-	DefaultSaveDir           string = ""
-	DefaultScope             string = ".*"
+	DefaultAddr     string = "127.0.0.1:8669"
+	DefaultCertFile string = ""
+	DefaultDBFile   string = ""
+	DefaultGRPCAddr string = "127.0.0.1:8670"
+	DefaultKeyFile  string = ""
+	DefaultPrint    bool   = false
+	DefaultSaveDir  string = ""
+	DefaultScope    string = ".*"
 )
+
+var DefaultExcludeExtensions string = strings.Join(efinproxy.DefaultExcludedExtensions, ",")
 
 // Execute runs the root command.
 func Execute() {
@@ -50,7 +51,7 @@ func NewProxyCmd(use string) *cobra.Command {
 				excludedExtensionsList = strings.Split(excludedExtensions, ",")
 			}
 
-			proxy, err := (&efinProxy.ProxyBuilder{
+			proxy, err := (&efinproxy.ProxyBuilder{
 				Addr:               proxyAddr,
 				GRPCAddr:           grpcAddr,
 				CertificateFile:    certFile,

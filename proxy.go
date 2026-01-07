@@ -1,4 +1,4 @@
-package proxyVibes
+package efinproxy
 
 import (
 	"crypto/rsa"
@@ -92,7 +92,7 @@ func (pb *ProxyBuilder) GetProxy() (*Proxy, error) {
 		responseOutHooks = append(responseOutHooks, h)
 	}
 
-	excludedExtensions := defaultExcludedExtensions
+	excludedExtensions := DefaultExcludedExtensions
 	if pb.ExcludedExtensions != nil {
 		excludedExtensions = append([]string{}, pb.ExcludedExtensions...)
 	}
@@ -154,45 +154,45 @@ func (p *Proxy) ListenAndServe() error {
 	return server.ListenAndServe()
 }
 
-var defaultExcludedExtensions []string = []string{
-	".aac",
-	".avi",
-	".bin",
-	".bmp",
-	".dat",
-	".db",
-	".dll",
-	".doc",
-	".docx",
-	".exe",
-	".flac",
-	".flv",
-	".gif",
-	".gz",
-	".img",
-	".iso",
-	".jpeg",
-	".jpg",
-	".m3u8",
-	".m4a",
-	".m4s",
-	".m4v",
-	".mkv",
-	".mov",
-	".mp3",
-	".mp4",
-	".ogg",
-	".pdf",
-	".png",
-	".rar",
-	".svg",
-	".tar",
-	".ts",
-	".wav",
-	".webm",
-	".webp",
-	".wmv",
-	".xls",
-	".xlsx",
-	".zip",
+var DefaultExcludedExtensions []string = []string{
+	"aac",
+	"avi",
+	"bin",
+	"bmp",
+	"dat",
+	"db",
+	"dll",
+	"doc",
+	"docx",
+	"exe",
+	"flac",
+	"flv",
+	"gif",
+	"gz",
+	"img",
+	"iso",
+	"jpeg",
+	"jpg",
+	"m3u8",
+	"m4a",
+	"m4s",
+	"m4v",
+	"mkv",
+	"mov",
+	"mp3",
+	"mp4",
+	"ogg",
+	"pdf",
+	"png",
+	"rar",
+	"svg",
+	"tar",
+	"ts",
+	"wav",
+	"webm",
+	"webp",
+	"wmv",
+	"xls",
+	"xlsx",
+	"zip",
 }
